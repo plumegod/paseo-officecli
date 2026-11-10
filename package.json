@@ -21,7 +21,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs",
-    "test:integration": "node --test tests/integration.mjs tests/commands.integration.mjs"
+    "test:integration": "node --test tests/integration.mjs tests/commands.integration.mjs tests/watch.integration.mjs"
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.15.3",

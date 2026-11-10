@@ -1,6 +1,7 @@
 import { defineRpc, defineSettings } from "@getpaseo/plugin";
 import { z } from "zod";
 import { commandArgs, commandSnapshot, MAX_INPUT_CHARS } from "./commands";
+import { watchEvent, watchRequest, watchState } from "./watch";
 
 export const officeSettings = defineSettings({
   id: "officecli",
@@ -22,6 +23,26 @@ export const previewRpc = defineRpc({
 });
 
 const workspaceId = z.string().min(1).max(1024);
+const leaseId = z.uuid();
+const watchInput = z.object({ workspaceId, leaseId });
+export const watchOpenRpc = defineRpc({
+  name: "officecli.watch.open",
+  input: z.object({ workspaceId, path: z.string().min(1).max(32768) }),
+  output: watchState.extend({ leaseId, html: z.string(), cursor: z.number().int().nonnegative() }),
+});
+export const watchRequestRpc = defineRpc({
+  name: "officecli.watch.request",
+  input: watchInput.extend({ request: watchRequest }),
+  output: watchState.extend({ body: z.string() }),
+});
+export const watchEventsRpc = defineRpc({
+  name: "officecli.watch.events",
+  input: watchInput.extend({ after: z.number().int().nonnegative() }),
+  output: watchState.extend({ events: z.array(watchEvent), cursor: z.number().int().nonnegative(), reload: z.boolean() }),
+});
+export const watchSaveRpc = defineRpc({ name: "officecli.watch.save", input: watchInput, output: watchState });
+export const watchCloseRpc = defineRpc({ name: "officecli.watch.close", input: watchInput, output: z.object({}) });
+
 const jobId = z.uuid();
 const input = z.string().max(MAX_INPUT_CHARS);
 export const commandStateRpc = defineRpc({
