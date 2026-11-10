@@ -1,5 +1,6 @@
 import { createElement, type Ref } from "react";
 import { Platform } from "react-native";
+import { previewHtml } from "./preview-html.ts";
 
 // Only the browser/desktop needs these APIs; the plugin does not require DOM typings.
 interface HtmlBlob { readonly size: number; readonly type: string }
@@ -9,9 +10,7 @@ declare const URL: { createObjectURL(blob: HtmlBlob): string; revokeObjectURL(ur
 export const supportsPreview = Platform.OS === "web";
 
 export function createPreviewUrl(html: string, bridge = ""): string {
-  // Keep official interactions while blocking external subresources; the sandbox isolates Paseo's origin.
-  const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:;">`;
-  return URL.createObjectURL(new Blob([html.replace(/<head(?:\s[^>]*)?>/i, `$&${policy}${bridge}`)], { type: "text/html;charset=utf-8" }));
+  return URL.createObjectURL(new Blob([previewHtml(html, bridge)], { type: "text/html;charset=utf-8" }));
 }
 
 export function revokePreviewUrl(url: string): void {
