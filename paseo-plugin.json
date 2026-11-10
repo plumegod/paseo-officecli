@@ -1,0 +1,8 @@
+{
+  "id": "paseo-officecli",
+  "name": "OfficeCLI",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.15.3"
+  }
+}
