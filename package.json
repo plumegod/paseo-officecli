@@ -1,9 +1,9 @@
 {
   "name": "paseo-officecli",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "description": "Open Office files in Paseo using an independently installed official OfficeCLI.",
+  "description": "Use the complete official OfficeCLI command line and Office file previews inside Paseo.",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/plumegod/paseo-officecli.git" },
   "files": [
@@ -21,7 +21,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs",
-    "test:integration": "node --test tests/integration.mjs"
+    "test:integration": "node --test tests/integration.mjs tests/commands.integration.mjs"
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.15.3",
