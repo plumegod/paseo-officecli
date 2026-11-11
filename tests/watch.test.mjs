@@ -11,6 +11,8 @@ import { runInNewContext } from "node:vm";
 import { watchBridge } from "../client/watch-bridge.ts";
 import { WatchManager, officialResult } from "../server/watch.ts";
 import { watchRequest, bridgeMessage } from "../shared/watch.ts";
+import { translate } from "../shared/locales.ts";
+const bridgeErrors = (locale) => Object.fromEntries(["watchQueue", "watchRequestTimeout", "watchEventUrl"].map((key) => [key, translate(locale, key)]));
 
 const edit = { route: "/api/send", method: "POST", body: { path: "/Sheet1/A1", prop: "text", value: "中文" } };
 
@@ -45,12 +47,17 @@ test("sandbox bridge authenticates replies and relays official fetch/SSE without
   let receive, nextTimer = 0;
   const parent = { postMessage: (message) => sent.push(message) };
   const window = { addEventListener: (_, listener) => { receive = listener; } };
-  runInNewContext(watchBridge(channel, 7).slice(8, -9), {
+  runInNewContext(watchBridge(channel, 7, bridgeErrors("en")).slice(8, -9), {
     window, parent, Response, EventTarget, Event, MessageEvent,
     setTimeout: (callback, delay) => { timers.set(++nextTimer, { callback, delay }); return nextTimer; },
     clearTimeout: (id) => timers.delete(id),
   });
   const reply = (message, value) => receive({ source: parent, data: { channel, id: message.id, value } });
+  assert.throws(() => new window.EventSource("/invalid"), /Unsupported watch event URL/);
+  receive({ source: {}, data: { channel, kind: "officecli-language", errors: bridgeErrors("ja") } });
+  assert.throws(() => new window.EventSource("/invalid"), /Unsupported watch event URL/, "foreign frames cannot set bridge text");
+  receive({ source: parent, data: { channel, kind: "officecli-language", errors: bridgeErrors("ja") } });
+  assert.throws(() => new window.EventSource("/invalid"), /未対応/, "own bridge errors update without reloading official HTML");
   const pending = window.fetch("/api/send", { method: "POST", body: JSON.stringify(edit.body) });
   assert.equal(sent[0].route, "/api/send"); assert.equal(sent[0].method, "POST");
   receive({ source: {}, data: { channel, id: sent[0].id, value: { body: "forged" } } });
@@ -140,9 +147,9 @@ test("owned watch lifecycle, authenticated scope and bounded event forwarding", 
   assert.equal(first.savedRevision, null, "opening does not claim existing resident is saved");
   assert.deepEqual(records[0].requests.filter((item) => item.route === "/api/send"), [], "opening never writes");
   assert.equal((await manager.request("one", root, first.leaseId, { route: "/api/selection", method: "POST", body: { paths: ["/Sheet1/A1"] } })).body, "");
-  await assert.rejects(manager.request("other-workspace", root, first.leaseId, edit), /another workspace/);
+  await assert.rejects(manager.request("other-workspace", root, first.leaseId, edit), /"code":"watchExpired"/);
   await assert.rejects(manager.request("one", tmpdir(), first.leaseId, { ...edit, route: "/api/switch" }));
-  await assert.rejects(manager.request("one", root, first.leaseId, { ...edit, body: { ...edit.body, value: "中".repeat(30000) } }), /64 KiB/);
+  await assert.rejects(manager.request("one", root, first.leaseId, { ...edit, body: { ...edit.body, value: "中".repeat(30000) } }), /"code":"watchRequestLimit"/);
   const changed = await manager.request("one", root, first.leaseId, edit);
   assert.equal(changed.lastWrite, "applied"); assert.equal(changed.savedRevision, null);
   records[0].result = { success: true, message: '{"success":false,"error":"actual CLI failure"}' };
@@ -154,11 +161,11 @@ test("owned watch lifecycle, authenticated scope and bounded event forwarding", 
   assert.equal(gap.reload, true); assert.equal(gap.cursor, 258);
   const tail = await manager.events("one", root, second.leaseId, 257);
   assert.equal(tail.events.length, 1); assert.equal(tail.events[0].id, 258);
-  await assert.rejects(manager.events("one", root, first.leaseId, 99999), /cursor/);
+  await assert.rejects(manager.events("one", root, first.leaseId, 99999), /"code":"watchCursor"/);
   await manager.close("one", first.leaseId);
   assert.equal(records[0].child.signalCode, null, "other tab keeps child alive");
   records[0].statusPath = paths[1];
-  await assert.rejects(manager.request("one", root, second.leaseId, edit), /changed document/);
+  await assert.rejects(manager.request("one", root, second.leaseId, edit), /"code":"watchChanged"/);
   assert.equal(records[0].requests.filter((item) => item.route === "/api/send").length, 2, "never edits retargeted file");
   await manager.close("one", second.leaseId);
   assert.equal(records[0].child.signalCode, "SIGTERM");
@@ -176,16 +183,16 @@ test("owned watch lifecycle, authenticated scope and bounded event forwarding", 
   startup = "error";
   await assert.rejects(manager.open("one", root, paths[0], "official-cli"), /ENOENT/);
   startup = "ok"; compatible = false;
-  await assert.rejects(manager.open("one", root, paths[0], "official-cli"), /Unsupported/);
+  await assert.rejects(manager.open("one", root, paths[0], "official-cli"), /"code":"watchProtocol"/);
   compatible = true;
   const opened = await Promise.all(paths.slice(0, 8).map((path) => manager.open("one", root, path, "official-cli")));
-  await assert.rejects(manager.open("one", root, paths[8], "official-cli"), /Eight documents/);
+  await assert.rejects(manager.open("one", root, paths[8], "official-cli"), /"code":"watchLimit"/);
   const target = await realpath(paths[7]);
   const crashed = records.find((record) => record.path === target);
   assert.ok(crashed);
   crashed.child.exitCode = 9; crashed.child.emit("exit", 9, null);
-  await assert.rejects(manager.events("one", root, opened[7].leaseId, 0), /exited/);
+  await assert.rejects(manager.events("one", root, opened[7].leaseId, 0), /"code":"watchExit"/);
   await manager.dispose();
   assert.ok(records.every((entry) => entry.child.exitCode !== null || entry.child.signalCode !== null));
-  await assert.rejects(manager.open("one", root, paths[0], "official-cli"), /stopped/);
+  await assert.rejects(manager.open("one", root, paths[0], "official-cli"), /"code":"pluginStopped"/);
 });

@@ -4,6 +4,8 @@ import { setImmediate as tick } from "node:timers/promises";
 import { test } from "node:test";
 import ts from "typescript";
 import { bridgeMessage, MAX_SELECTION_PATHS, selectionUpdate, watchRequest } from "../shared/watch.ts";
+import { translations } from "./i18n-fixture.mjs";
+import { message } from "../shared/messages.ts";
 
 function nodes(value) {
   if (Array.isArray(value)) return value.flatMap(nodes);
@@ -24,10 +26,11 @@ test("watch UI tracks validated selection events and quotes the selection", asyn
     removeEventListener: () => { listener = null; },
   };
   const slots = [], effects = [], cleanups = [], calls = [], published = [];
-  let cursor = 0, nextEvents = [], prepareFailure = false;
+  let cursor = 0, nextEvents = [], prepareFailure = false, locale = "zh-CN";
+  const lifecycle = [];
   const rpc = {
-    open: async () => ({ leaseId, html: "<html></html>", cursor: 0, ...state }),
-    close: async () => ({}),
+    open: async () => { lifecycle.push("open"); return { leaseId, html: "<html></html>", cursor: 0, ...state }; },
+    close: async () => { lifecycle.push("close"); return {}; },
     request: async (input) => { calls.push({ type: "request", input }); return { body: "", ...state }; },
     events: async () => ({ events: nextEvents, cursor: 1, reload: false, ...state }),
     save: async () => state,
@@ -38,7 +41,11 @@ test("watch UI tracks validated selection events and quotes the selection", asyn
     react: {
       useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === "function" ? initial() : initial; return [slots[i], (value) => { slots[i] = typeof value === "function" ? value(slots[i]) : value; }]; },
       useRef(initial) { const i = cursor++; if (!(i in slots)) slots[i] = { current: initial }; return slots[i]; },
-      useEffect(fn) { const i = cursor++; if (!(i in slots)) { slots[i] = true; effects.push(fn); } },
+      useEffect(fn, deps) {
+        const i = cursor++;
+        const previous = slots[i];
+        if (!previous || deps.some((value, index) => value !== previous[index])) { slots[i] = deps; effects.push(fn); }
+      },
       useLayoutEffect() { cursor++; },
     },
     "react/jsx-runtime": { jsx, jsxs: jsx },
@@ -50,6 +57,8 @@ test("watch UI tracks validated selection events and quotes the selection", asyn
     "./web": { createPreviewUrl: () => "blob:preview", revokePreviewUrl() {}, PreviewFrame: "PreviewFrame" },
     "./watch-bridge": { watchBridge: () => "bridge" },
     "./controls": { ActionButton: "ActionButton" },
+    "./i18n": { useOfficeTranslation: () => translations(locale) },
+    "../shared/messages": { message },
   };
   const source = readFileSync(new URL("../client/watch.tsx", import.meta.url), "utf8");
   const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } });
@@ -59,11 +68,12 @@ test("watch UI tracks validated selection events and quotes the selection", asyn
   const render = () => { cursor = 0; return nodes(exports.WatchEditor(props)); };
   const button = (tree, label) => tree.find((node) => node.type === "ActionButton" && node.props.label === label);
   let tree = render();
-  for (const effect of effects) { const cleanup = effect(); if (cleanup) cleanups.push(cleanup); }
+  for (const effect of effects.splice(0)) { const cleanup = effect(); if (cleanup) cleanups.push(cleanup); }
   t.after(() => { cleanups.forEach((cleanup) => cleanup()); globalThis.window = previousWindow; });
   await tick();
   tree = render();
-  const frameWindow = { postMessage() {} };
+  const bridgeUpdates = [];
+  const frameWindow = { postMessage: (value) => bridgeUpdates.push(value) };
   tree.find((node) => node.type === "PreviewFrame").props.frameRef.current = { contentWindow: frameWindow };
   assert.equal(button(tree, "引用选中区域").props.disabled, true);
 
@@ -93,4 +103,16 @@ test("watch UI tracks validated selection events and quotes the selection", asyn
   nextEvents = [{ id: 2, type: "update", data: JSON.stringify({ action: "selection-update", paths: Array(MAX_SELECTION_PATHS + 1).fill("/body/p[1]") }) }];
   await listener({ source: frameWindow, data: { channel, id: 3, kind: "events", after: 1 } });
   assert.equal(button(render(), "引用选中区域").props.disabled, true, "selection limit is visible before capture");
+  const visibleUrl = render().find((node) => node.type === "PreviewFrame").props.url;
+  for (const next of ["en", "zh-TW", "ja", "zh-CN"]) {
+    locale = next;
+    const tree = render();
+    assert.ok(button(tree, translations(next).t("referenceSelection")));
+    assert.equal(tree.find((node) => node.type === "PreviewFrame").props.url, visibleUrl);
+    assert.equal(effects.length, 1, "only the bridge's error-label update runs; no lease/frame lifecycle effect");
+    effects.splice(0).forEach((effect) => { assert.equal(effect(), undefined); });
+    assert.equal(bridgeUpdates.at(-1).kind, "officecli-language");
+    assert.equal(bridgeUpdates.at(-1).errors.watchQueue, translations(next).t("watchQueue"));
+  }
+  assert.deepEqual(lifecycle, ["open"]);
 });

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { MAX_INPUT_CHARS, parseArguments } from "../shared/commands.ts";
+import { messages, translations } from "./i18n-fixture.mjs";
+import { languageNames, locales } from "../shared/locales.ts";
 
 function load(path, mocks) {
   const source = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -42,6 +44,7 @@ function surface(path) {
   const h = {
     calls,
     Modal,
+    locale: "zh-CN",
     query: { data: { directory: "/work", executable: "/bin/officecli", installation: installation(), job: null }, isPending: false, isError: false, refetch() {} },
     statusQuery: { data: installation(), isPending: false, isError: false, async refetch() { return { data: this.data }; } },
     queries: new Map(), mutations: [],
@@ -53,7 +56,7 @@ function surface(path) {
     "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "Fragment" },
     "react-native": { Text: "Text", View: "View" },
     "@getpaseo/plugin/client": { useRpc: (operation) => (input) => calls.push({ operation, input }), useSettings: () => h.settings },
-    "@getpaseo/plugin/client/ui": { Modal, Loading: "Loading", ScrollView: "ScrollView", TextInput: "TextInput", SettingsSwitch: "SettingsSwitch", SettingsCard: "SettingsCard", SettingsSection: "SettingsSection", SettingsInput: "SettingsInput", SettingsAction: "SettingsAction", SettingsRow: "SettingsRow", ExternalLink: "ExternalLink", copyText: async () => {} },
+    "@getpaseo/plugin/client/ui": { Modal, Loading: "Loading", ScrollView: "ScrollView", TextInput: "TextInput", SettingsSwitch: "SettingsSwitch", SettingsCard: "SettingsCard", SettingsSection: "SettingsSection", SettingsInput: "SettingsInput", SettingsAction: "SettingsAction", SettingsRow: "SettingsRow", SettingsSelect: "SettingsSelect", ExternalLink: "ExternalLink", copyText: async () => {} },
     "@tanstack/react-query": {
       useQuery: (options) => { h.queries.set(options.queryKey[0], options); return path === "client/preview.tsx" && options.queryKey[0] === "officecli.status" ? h.statusQuery : h.query; },
       useMutation: (options) => { h.mutations.push(options); return { mutate: (...args) => options.mutationFn(...args), isPending: false, reset() {} }; },
@@ -62,6 +65,9 @@ function surface(path) {
     "../shared/officecli": { officeSettings: {}, statusRpc: "status", previewRpc: "preview", commandStateRpc: "state", commandStartRpc: "start", commandInputRpc: "input", commandStopRpc: "stop" },
     "../shared/commands": { MAX_INPUT_CHARS, parseArguments },
     "./controls": { ActionButton: "ActionButton", Disclosure: "Disclosure" },
+    "./i18n": { useOfficeTranslation: () => translations(h.locale) },
+    "./language-store": { languageNames },
+    "../shared/locales": { locales },
     "./commands": { CommandConsole: "CommandConsole" },
     "./watch": { WatchEditor: "WatchEditor" },
     "./web": { supportsPreview: true, createPreviewUrl() {}, revokePreviewUrl() {}, PreviewFrame: "PreviewFrame" },
@@ -80,6 +86,7 @@ test("navigation registers the file panel and settings, and cleans up prepared s
     "./client/preview": { OfficePreview: "Preview" },
     "./client/selection": { createSelectionSource: () => selections },
     "./client/settings": { OfficeSettings: "Settings" },
+    "./client/i18n": { messages, observeLanguageStorage: () => () => {} },
   });
   const registrations = [];
   const client = Object.fromEntries(["addFilePanel", "addSettingsScreen"].map((name) => [name, (value) => {
@@ -333,4 +340,43 @@ test("preview manual refresh re-detects capabilities before requesting HTML", ()
   h.statusQuery.data.capabilities.htmlPreview.status = "supported";
   recheck.onSuccess(h.statusQuery.data);
   assert.equal(renders, 1);
+});
+
+test("four-language rerenders preserve argv/stdin, confirmation, running job identity and raw output", () => {
+  const h = surface("client/commands.tsx");
+  const args = '["future-command","日本語 path.docx"]', input = '原文 stdin {{name}}';
+  let tree = h.render();
+  tree.find((node) => node.props?.accessibilityLabel === "OfficeCLI 命令参数").props.onChangeText(args);
+  tree.find((node) => node.props?.accessibilityLabel === "OfficeCLI 输入内容").props.onChangeText(input);
+  button(h.render(), "运行命令").props.onPress();
+  for (const locale of locales) {
+    h.locale = locale; tree = h.render();
+    const inputs = tree.filter((node) => node.type === "TextInput");
+    assert.deepEqual(inputs.map((node) => node.props.value), [args, input]);
+    assert.equal(tree.find((node) => node.type === h.Modal).props.open, true);
+    assert.ok(button(tree, translations(locale).t("confirmRun")));
+  }
+  const job = { id: "still-running", status: "running", stdinOpen: true, stdout: '原始 stdout <&> {{save}}', stderr: 'raw CLI error', exitCode: null };
+  h.query.data.job = job;
+  for (const locale of locales) {
+    h.locale = locale; tree = h.render();
+    assert.equal(h.query.data.job, job);
+    assert.equal(h.queries.get("officecli.command").queryKey[1], "workspace");
+    assert.deepEqual(tree.filter((node) => node.type === "TextInput").map((node) => node.props.value), [args, input]);
+    assert.ok(tree.some((node) => node.type === "Text" && Array.isArray(node.props.children) && node.props.children[0] === job.stdout));
+  }
+  assert.deepEqual(h.calls, [], "language changes do not execute, send, save or stop anything");
+});
+
+test("the native language selector exposes autonyms and preserves an unsaved executable path", () => {
+  const h = surface("client/settings.tsx"); h.query.data = installation();
+  h.render().find((node) => node.type === "SettingsInput").props.onChangeText("/unsaved/path");
+  for (const locale of locales) {
+    h.locale = locale;
+    const tree = h.render();
+    const selector = tree.find((node) => node.type === "SettingsSelect");
+    assert.deepEqual(selector.props.options.slice(1).map((option) => option.label), locales.map((key) => languageNames[key]));
+    assert.ok(tree.find((node) => node.type === "SettingsAction" && node.props.label === translations(locale).t("saveChanges")));
+  }
+  assert.deepEqual(h.calls, []);
 });

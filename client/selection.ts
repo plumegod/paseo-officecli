@@ -1,5 +1,6 @@
 import type { PluginClientContext, PluginComposer } from "@getpaseo/plugin/client";
 import { selectionSearchRpc } from "../shared/officecli.ts";
+import { messages } from "./i18n.ts";
 
 function composerInWorkspace(client: PluginClientContext, workspaceId: string, agents: { id: string; workspaceId?: string }[]) {
   const local = agents
@@ -38,10 +39,10 @@ export function createSelectionSource(client: PluginClientContext) {
       const sourceId = `office-selection-${crypto.randomUUID()}`;
       remove = client.addAttachmentSource({
         id: sourceId,
-        title: `Office 选区 · ${fileName} · ${workspaceId}`,
+        title: messages.message("selectionTitle", { file: fileName, workspace: workspaceId }),
         icon: "FileText",
-        pickerTitle: `添加 Office 选区 · ${fileName}`,
-        searchPlaceholder: "选择已准备的选区",
+        pickerTitle: messages.message("selectionPicker", { file: fileName }),
+        searchPlaceholder: messages.message("selectionSearch"),
         search: selectionSearchRpc,
       });
       published = true;

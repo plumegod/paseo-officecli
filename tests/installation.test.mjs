@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { InstallationInspector, requireInstallation } from "../server/installation.ts";
+import { displayMessage } from "../shared/messages.ts";
+const display = (value) => displayMessage("zh-CN", value);
 
 function installation(version = "1.0.160") {
   const h = {
@@ -33,9 +35,9 @@ test("below-baseline installs only run --version and block every execution mode"
     assert.equal(status.compatibility, "upgrade-required", version);
     assert.deepEqual(h.calls.map((call) => call.args), [["--version"]]);
     assert.ok(states(status).every((state) => state === "unknown"));
-    assert.match(status.diagnostic, /1\.0\.160.*官方.*https:\/\/github.com\/iOfficeAI\/OfficeCLI/);
-    assert.throws(() => requireInstallation(status), /需要升级/);
-    assert.throws(() => requireInstallation(status, true), /需要升级/);
+    assert.match(display(status.diagnostic), /1\.0\.160.*官方.*https:\/\/github.com\/iOfficeAI\/OfficeCLI/);
+    assert.throws(() => requireInstallation(status), /"code":"upgradeRequired"/);
+    assert.throws(() => requireInstallation(status, true), /"code":"upgradeRequired"/);
   }
 });
 
@@ -61,8 +63,8 @@ test("unrecognized or failed version checks are unknown, not old, and retain gen
     assert.equal(status.compatibility, "unknown");
     assert.deepEqual(h.calls.map((call) => call.args), [["--version"]]);
     assert.doesNotThrow(() => requireInstallation(status));
-    assert.throws(() => requireInstallation(status, true), /最低版本尚未确认/);
-    assert.match(status.diagnostic, /高级命令诊断/);
+    assert.throws(() => requireInstallation(status, true), /"code":"versionUnknown"/);
+    assert.match(display(status.diagnostic), /高级命令诊断/);
     if (version instanceof Error) assert.match(status.diagnostic, /exit 5/);
   }
 });
@@ -73,7 +75,7 @@ test("failed help is unknown and never disables a supported version or generic e
   const status = await h.check();
   assert.equal(status.compatibility, "supported");
   assert.deepEqual(states(status), Array(5).fill("unknown"));
-  assert.match(status.diagnostic, /help 不可用.*exit 7/);
+  assert.match(display(status.diagnostic), /help 不可用.*exit 7/);
   assert.match(status.capabilities.htmlPreview.diagnostic, /exit 7/);
   assert.doesNotThrow(() => requireInstallation(status, true));
 });
@@ -88,11 +90,11 @@ test("malformed JSON and changed help shapes preserve unknown and their raw diag
   h.help.mcp = "";
   const status = await h.check();
   assert.deepEqual(states(status), Array(5).fill("unknown"));
-  assert.match(status.diagnostic, /全局 help 输出无法识别.*newCommands/);
-  assert.match(status.capabilities.htmlPreview.diagnostic, /JSON 输出异常.*newModes/);
+  assert.match(display(status.diagnostic), /全局 help 输出无法识别.*newCommands/);
+  assert.match(display(status.capabilities.htmlPreview.diagnostic), /JSON 输出异常.*newModes/);
   assert.match(status.capabilities.batch.diagnostic, /futureCommandInfo/);
   assert.match(status.capabilities.save.diagnostic, /paragraph/);
-  assert.match(status.capabilities.mcp.diagnostic, /空输出/);
+  assert.match(display(status.capabilities.mcp.diagnostic), /∅/);
 });
 
 test("only explicit capability absence is missing; a partial command list is not an allowlist", async () => {

@@ -63,26 +63,26 @@ test("streaming stdin and explicit EOF work without a fixed timeout", async (t) 
   const runner = runnerFor(t);
   const job = node(runner, process.cwd(), 'process.stdin.setEncoding("utf8");process.stdin.on("data",s=>process.stdout.write(s));process.stdin.on("end",()=>process.stdout.write("EOF"));', [], "first\n", true);
   await until(runner, "w", (job) => job.stdout.includes("first"));
-  assert.throws(() => runner.input("w", job.id, "x".repeat(4 * 1024 * 1024 + 1), false), /stdin is busy/);
+  assert.throws(() => runner.input("w", job.id, "x".repeat(4 * 1024 * 1024 + 1), false), /"code":"stdinBusy"/);
   runner.input("w", job.id, "second\n", false);
   runner.input("w", job.id, "last\n", true);
   const done = await until(runner, "w");
   assert.equal(done.stdout, "first\nsecond\nlast\nEOF");
   assert.equal(done.status, "completed");
-  assert.throws(() => runner.input("w", job.id, "late", false), /stdin is closed/);
+  assert.throws(() => runner.input("w", job.id, "late", false), /"code":"stdinClosed"/);
 });
 
 test("active jobs cannot be overwritten and stop checks workspace plus job identity", async (t) => {
   const runner = runnerFor(t);
   const job = node(runner, process.cwd(), 'setInterval(()=>{},1000);');
-  assert.throws(() => node(runner, process.cwd(), 'console.log("replacement");'), /already running/);
-  assert.throws(() => runner.stop("another-workspace", job.id), /not found/);
-  assert.throws(() => runner.stop("w", "stale-id"), /not found/);
+  assert.throws(() => node(runner, process.cwd(), 'console.log("replacement");'), /"code":"commandRunning"/);
+  assert.throws(() => runner.stop("another-workspace", job.id), /"code":"commandMissing"/);
+  assert.throws(() => runner.stop("w", "stale-id"), /"code":"commandMissing"/);
   runner.stop("w", job.id);
   assert.equal((await until(runner, "w")).status, "stopped");
   const replacement = node(runner, process.cwd(), 'console.log("new");');
   assert.notEqual(replacement.id, job.id);
-  assert.throws(() => runner.input("w", job.id, "", true), /not found/);
+  assert.throws(() => runner.input("w", job.id, "", true), /"code":"commandMissing"/);
   assert.equal((await until(runner, "w")).status, "completed");
 });
 
@@ -91,14 +91,14 @@ test("output is bounded and an overflowing process is stopped without claiming r
   node(runner, process.cwd(), `process.stdout.write("x".repeat(${MAX_OUTPUT_BYTES + 65536}));setInterval(()=>{},1000);`);
   const job = await until(runner, "w");
   assert.equal(job.status, "failed");
-  assert.match(job.error, /16 MiB.*not rolled back/);
+  assert.match(job.error, /"code":"outputLimit"/);
   assert.equal(Buffer.byteLength(job.stdout) + Buffer.byteLength(job.stderr), MAX_OUTPUT_BYTES);
 });
 
 test("retention is bounded, evicts finished jobs and never evicts an active process", async (t) => {
   const runner = runnerFor(t);
   for (let i = 0; i < 8; i++) node(runner, process.cwd(), 'setInterval(()=>{},1000);', [], "", false, `w${i}`);
-  assert.throws(() => node(runner, process.cwd(), 'console.log("ninth");', [], "", false, "w8"), /Eight workspaces/);
+  assert.throws(() => node(runner, process.cwd(), 'console.log("ninth");', [], "", false, "w8"), /"code":"workspaceLimit"/);
   const oldest = runner.get("w0");
   runner.stop("w0", oldest.id);
   await until(runner, "w0");

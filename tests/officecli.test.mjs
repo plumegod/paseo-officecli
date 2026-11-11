@@ -3,7 +3,10 @@ import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { MAX_OUTPUT_BYTES, resolveDocument, resolveExecutable, runOfficeCli } from "../server/officecli.ts";
+import { MAX_OUTPUT_BYTES, resolveDocument as resolveDocumentRaw, resolveExecutable as resolveExecutableRaw, runOfficeCli as runOfficeCliRaw } from "../server/officecli.ts";
+import { displayMessage } from "../shared/messages.ts";
+const withEnglishError = (fn) => async (...args) => { try { return await fn(...args); } catch (error) { throw new Error(displayMessage("en", error)); } };
+const resolveDocument = withEnglishError(resolveDocumentRaw), resolveExecutable = withEnglishError(resolveExecutableRaw), runOfficeCli = withEnglishError(runOfficeCliRaw);
 
 const temp = await mkdtemp(join(tmpdir(), "paseo-officecli-"));
 after(() => rm(temp, { recursive: true, force: true }));

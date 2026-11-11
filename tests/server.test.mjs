@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import ts from "typescript";
 import { InstallationInspector, requireInstallation } from "../server/installation.ts";
+import { message, displayMessage } from "../shared/messages.ts";
 
 function server(version = "1.0.160") {
   const h = { version, executable: "/bin/officecli", probes: [], executions: [], handlers: new Map(), help: {} };
@@ -11,6 +12,7 @@ function server(version = "1.0.160") {
   const operation = (name) => (...args) => { h.executions.push({ name, args }); return { id: "job", html: "<html><head></head></html>" }; };
   const mocks = {
     "node:fs/promises": { realpath },
+    "./shared/messages": { message },
     "./shared/officecli": Object.fromEntries(["officeSettings", ...rpcNames].map((key) => [key, key])),
     "./server/officecli": {
       resolveExecutable: async () => h.executable,
@@ -53,7 +55,10 @@ function server(version = "1.0.160") {
     handle: (rpc, handler) => h.handlers.set(rpc, handler),
   });
   const context = { paseo: { workspaces: { ref: () => ({ refresh: async () => ({ workspaceDirectory: process.cwd() }) }) } } };
-  h.call = (rpc, input = {}) => h.handlers.get(rpc)({ workspaceId: "workspace", path: "/work/test.docx", ...input }, context);
+  h.call = async (rpc, input = {}) => {
+    try { return await h.handlers.get(rpc)({ workspaceId: "workspace", path: "/work/test.docx", ...input }, context); }
+    catch (error) { throw new Error(displayMessage("zh-CN", error)); }
+  };
   return h;
 }
 

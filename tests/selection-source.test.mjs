@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { setImmediate as tick } from "node:timers/promises";
 import { test } from "node:test";
-import { searchPluginAttachments } from "@getpaseo/plugin/client/host";
+import { searchPluginAttachments, PluginTranslationRuntime } from "@getpaseo/plugin/client/host";
 import { createSelectionSource } from "../client/selection.ts";
 
 const token = "22171133-fc27-4f17-84b6-0376e2cb9123";
@@ -27,7 +27,10 @@ test("prepared attachment source injects its private token and cleans up", async
   assert.equal(publish(token), true);
   assert.equal(publish(token), false, "a capture can only be published once");
   const first = added[0];
-  assert.match(first.title, /report\.pptx.*workspace-b/);
+  const i18n = new PluginTranslationRuntime({ getLocale: () => "en", subscribe: () => () => {} });
+  assert.match(i18n.resolve(first.title), /report\.pptx.*workspace-b/);
+  assert.match(i18n.resolve(first.pickerTitle, "ja"), /report\.pptx/);
+  i18n.dispose();
   assert.ok(!first.id.includes(token), "the capability is not exposed as a source id");
   const calls = [];
   await searchPluginAttachments(first, async (name, input) => { calls.push({ name, input }); return { items: [] }; }, "");

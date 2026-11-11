@@ -1,19 +1,26 @@
+export type BridgeErrors = Record<"watchQueue" | "watchRequestTimeout" | "watchEventUrl", string>;
+
 // Transport adapters only: rendering, cell editing and chart dragging remain OfficeCLI's scripts.
-export function watchBridge(channel: string, cursor: number): string {
+export function watchBridge(channel: string, cursor: number, errors: BridgeErrors): string {
   return `<script>(function(){
     const channel = ${JSON.stringify(channel)}, pending = new Map();
-    let id = 0, cursor = ${cursor}, active;
+    let id = 0, cursor = ${cursor}, active, errors = ${JSON.stringify(errors).replaceAll("<", "\\u003c")};
     function call(kind, payload) {
-      if (pending.size >= 8) return Promise.reject(new Error('Too many watch requests'));
+      if (pending.size >= 8) return Promise.reject(new Error(errors.watchQueue));
       return new Promise((resolve, reject) => {
         const requestId = ++id;
-        const timer = setTimeout(() => { pending.delete(requestId); reject(new Error('Watch request timed out; outcome unconfirmed. Do not blindly retry.')); }, 70000);
+        const timer = setTimeout(() => { pending.delete(requestId); reject(new Error(errors.watchRequestTimeout)); }, 70000);
         pending.set(requestId, { resolve, reject, timer });
         parent.postMessage({ channel, id: requestId, kind, ...payload }, '*');
       });
     }
     window.addEventListener('message', (event) => {
       if (event.source !== parent || event.data?.channel !== channel) return;
+      if (event.data.kind === 'officecli-language') {
+        const next = event.data.errors;
+        if (next && ['watchQueue', 'watchRequestTimeout', 'watchEventUrl'].every(key => typeof next[key] === 'string')) errors = next;
+        return;
+      }
       const task = pending.get(event.data.id);
       if (!task) return;
       pending.delete(event.data.id); clearTimeout(task.timer);
@@ -27,7 +34,7 @@ export function watchBridge(channel: string, cursor: number): string {
     window.EventSource = class extends EventTarget {
       constructor(url) {
         super();
-        if (url !== '/events') throw new Error('Unsupported watch event URL');
+        if (url !== '/events') throw new Error(errors.watchEventUrl);
         if (active) active.close();
         active = this; this.readyState = 0; this.closed = false;
         const poll = async () => {

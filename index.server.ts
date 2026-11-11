@@ -4,6 +4,7 @@ import { commandInputRpc, commandStartRpc, commandStateRpc, commandStopRpc, offi
 import { CommandRunner, renderDocument, resolveDocument, resolveExecutable } from "./server/officecli";
 import { InstallationInspector, requireInstallation } from "./server/installation";
 import { WatchManager } from "./server/watch";
+import { message } from "./shared/messages";
 
 export default function contribute(server: PluginServerContext) {
   const settings = server.registerSettings(officeSettings);
@@ -13,7 +14,7 @@ export default function contribute(server: PluginServerContext) {
   async function directory(workspaceId: string, paseo: PluginHandlerContext["paseo"]) {
     const workspace = await paseo.workspaces.ref(workspaceId).refresh();
     const root = workspace?.workspaceDirectory || workspace?.projectRootPath;
-    if (!root) throw new Error("Workspace not found or has no directory.");
+    if (!root) throw new Error(message("workspaceMissing"));
     return realpath(root);
   }
   async function executable() {
