@@ -1,7 +1,7 @@
-import { defineRpc, defineSettings } from "@getpaseo/plugin";
+import { defineRpc, defineSettings, PluginAttachmentSearchPayloadSchema } from "@getpaseo/plugin";
 import { z } from "zod";
-import { commandArgs, commandSnapshot, MAX_INPUT_CHARS } from "./commands";
-import { watchEvent, watchRequest, watchState } from "./watch";
+import { commandArgs, commandSnapshot, MAX_INPUT_CHARS } from "./commands.ts";
+import { MAX_SELECTION_PATHS, selectionPaths, watchEvent, watchRequest, watchState } from "./watch.ts";
 
 export const officeSettings = defineSettings({
   id: "officecli",
@@ -51,6 +51,16 @@ export const watchEventsRpc = defineRpc({
 });
 export const watchSaveRpc = defineRpc({ name: "officecli.watch.save", input: watchInput, output: watchState });
 export const watchCloseRpc = defineRpc({ name: "officecli.watch.close", input: watchInput, output: z.object({}) });
+export const selectionPrepareRpc = defineRpc({
+  name: "officecli.selection.prepare",
+  input: watchInput.extend({ paths: selectionPaths.min(1).max(MAX_SELECTION_PATHS) }),
+  output: z.object({ token: z.uuid(), preview: z.string() }),
+});
+export const selectionSearchRpc = defineRpc({
+  name: "officecli.selection.search",
+  input: z.object({ query: z.string().max(1024) }),
+  output: PluginAttachmentSearchPayloadSchema,
+});
 
 const jobId = z.uuid();
 const input = z.string().max(MAX_INPUT_CHARS);

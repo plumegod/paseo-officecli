@@ -5,7 +5,10 @@
   "type": "module",
   "description": "Use the complete official OfficeCLI command line and Office file previews inside Paseo.",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/plumegod/paseo-officecli.git" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/plumegod/paseo-officecli.git"
+  },
   "files": [
     "paseo-plugin.json",
     "OVERVIEW.md",
@@ -25,7 +28,7 @@
     "test:integration": "node --test tests/integration.mjs tests/commands.integration.mjs tests/watch.integration.mjs"
   },
   "devDependencies": {
-    "@getpaseo/plugin": "0.15.3",
+    "@getpaseo/plugin": "0.16.0-beta.1",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^24.19.2",
     "@types/react": "~19.2.0",
