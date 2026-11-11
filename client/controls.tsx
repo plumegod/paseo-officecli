@@ -3,9 +3,10 @@ import { Pressable, Text, View } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/ui";
 
-export function ActionButton({ theme, label, icon, onPress, disabled = false, primary = false, selected }: {
+export function ActionButton({ theme, label, hint, icon, onPress, disabled = false, primary = false, selected }: {
   theme: PluginSurfaceProps["theme"];
   label: string;
+  hint?: string;
   icon?: string;
   onPress(): void;
   disabled?: boolean;
@@ -16,7 +17,7 @@ export function ActionButton({ theme, label, icon, onPress, disabled = false, pr
   const colors = theme.colors;
   const color = primary ? colors.accentForeground : colors.foreground;
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled, selected }} aria-pressed={selected} disabled={disabled}
+    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={hint} accessibilityState={{ disabled, selected }} aria-pressed={selected} disabled={disabled}
       onPress={onPress} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
       style={({ pressed }) => ({
         flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 32,

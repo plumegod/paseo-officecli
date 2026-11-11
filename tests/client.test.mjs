@@ -83,9 +83,23 @@ test("file preview preserves watch editing alongside advanced commands", () => {
     const render = () => h.render({ file });
     let tree = render();
     assert.equal(tree.some((node) => node.type === "WatchEditor" || node.type === "CommandConsole"), false);
-    button(tree, extension === "xlsx" ? "交互编辑" : "实时预览/选择").props.onPress();
+    const interact = button(tree, extension === "xlsx" ? "交互编辑" : "实时预览/选择");
+    assert.match(interact.props.hint, extension === "xlsx" ? /双击/ : /不能原位编辑文本/);
+    interact.props.onPress();
     tree = render();
-    assert.equal(tree.find((node) => node.type === "WatchEditor").props.file, file);
+    const editor = tree.find((node) => node.type === "WatchEditor");
+    assert.equal(editor.props.file, file);
+    const actions = [];
+    const chrome = { save: () => actions.push("save"), reload: () => actions.push("reload"), label: "保存", disabled: false, error: null };
+    editor.props.onChrome(chrome);
+    tree = render();
+    button(tree, "保存").props.onPress();
+    button(tree, "重载").props.onPress();
+    assert.deepEqual(actions, ["save", "reload"]);
+    editor.props.onChrome({ ...chrome, label: "保存中", disabled: true, error: "保存失败" });
+    tree = render();
+    assert.equal(button(tree, "保存中").props.disabled, true);
+    assert.equal(tree.find((node) => node.props?.accessibilityRole === "alert").props.children, "保存失败");
     button(tree, "高级命令").props.onPress();
     tree = render();
     assert.equal(tree.some((node) => node.type === "WatchEditor"), false);
@@ -97,6 +111,18 @@ test("file preview preserves watch editing alongside advanced commands", () => {
     assert.ok(button(tree, "刷新预览"));
     assert.equal(tree.some((node) => node.type === "WatchEditor" || node.type === "CommandConsole"), false);
   }
+});
+
+test("action buttons preserve accessibility hints", () => {
+  const jsx = (type, props) => ({ type, props });
+  const { ActionButton } = load("client/controls.tsx", {
+    react: { useState: () => [false, () => {}] },
+    "react/jsx-runtime": { jsx, jsxs: jsx },
+    "react-native": { Pressable: "Pressable", Text: "Text", View: "View" },
+    "@getpaseo/plugin/client/ui": { Icon: "Icon" },
+  });
+  const control = ActionButton({ theme, label: "保存", hint: "调用官方 save", onPress() {} });
+  assert.equal(control.props.accessibilityHint, "调用官方 save");
 });
 
 test("settings defaults to auto-detection and shows save only after an edit", () => {

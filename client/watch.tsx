@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Text, View } from "react-native";
 import { useRpc, type PluginFilePanelProps } from "@getpaseo/plugin/client";
 import { Loading } from "@getpaseo/plugin/client/ui";
 import { watchCloseRpc, watchEventsRpc, watchOpenRpc, watchRequestRpc, watchSaveRpc } from "../shared/officecli";
@@ -14,7 +14,9 @@ declare const window: {
   removeEventListener(type: "message", listener: (event: FrameMessage) => void): void;
 };
 
-export function WatchEditor({ workspaceId, file, theme }: Pick<PluginFilePanelProps, "workspaceId" | "file" | "theme">) {
+export type WatchChrome = { save(): void; reload(): void; label: string; disabled: boolean; error: string | null };
+
+export function WatchEditor({ workspaceId, file, theme, onChrome }: Pick<PluginFilePanelProps, "workspaceId" | "file" | "theme"> & { onChrome: (chrome: WatchChrome | null) => void }) {
   const open = useRpc(watchOpenRpc), request = useRpc(watchRequestRpc), events = useRpc(watchEventsRpc);
   const close = useRpc(watchCloseRpc), save = useRpc(watchSaveRpc);
   const api = useRef({ open, request, events, close, save });
@@ -96,32 +98,28 @@ export function WatchEditor({ workspaceId, file, theme }: Pick<PluginFilePanelPr
   }, [workspaceId, file.path, restart]);
   const lastLoaded = useRef<string | null>(null);
   const colors = theme.colors;
-  const xlsx = /\.xlsx$/i.test(file.path);
+  const saved = !!state && state.savedRevision !== null && state.savedRevision === state.revision;
+  const persist = useRef({ save: async () => {}, reload: () => {} });
+  persist.current.save = async () => {
+    const leaseId = session.current;
+    if (!leaseId) return;
+    setSaving(true); setError(null);
+    try { update(await save({ workspaceId, leaseId })); }
+    catch (failure) { setError(String(failure)); }
+    finally { setSaving(false); }
+  };
+  persist.current.reload = () => setRestart((value) => value + 1);
+  useLayoutEffect(() => {
+    onChrome({
+      save: () => { void persist.current.save(); },
+      reload: () => persist.current.reload(),
+      label: saving ? "保存中" : busy ? "提交中" : saved ? "已保存" : "保存",
+      disabled: !state || fatal || saving || busy > 0,
+      error,
+    });
+  }, [onChrome, state, fatal, saving, busy, saved, error]);
+  useEffect(() => () => onChrome(null), [onChrome]);
   return <View style={{ flex: 1, minHeight: 0 }}>
-    <View style={{ padding: 12, gap: 8, borderBottomWidth: 1, borderColor: colors.border }}>
-      <Text style={{ color: colors.foreground }}>
-        {xlsx ? "官方 watch：双击单元格编辑，拖动图表调整位置。" : "官方 watch：实时预览和元素选择；此版本不支持 Word/PPTX 原位文本编辑，请使用高级命令。"}
-      </Text>
-      <Text accessibilityLiveRegion="polite" style={{ color: colors.foregroundMuted }}>
-        {saving ? "正在请求官方 save…" : busy ? "正在向官方提交修改，尚未确认成功…"
-          : state && state.savedRevision !== null && state.savedRevision === state.revision ? "本次插件修改已通过官方 save 确认落盘（不包含之后的外部修改）。"
-          : `${state?.lastWrite === "applied" ? "官方已应用修改；" : state?.lastWrite === "unconfirmed" ? "修改结果未确认；" : ""}落盘未确认；官方自动保存策略不变。点击保存可确认，不会关闭 resident。`}
-      </Text>
-      <View style={{ flexDirection: "row", gap: 16 }}>
-        <Pressable accessibilityRole="button" disabled={!state || fatal || saving || busy > 0} onPress={async () => {
-          const leaseId = session.current;
-          if (!leaseId) return;
-          setSaving(true); setError(null);
-          try { update(await save({ workspaceId, leaseId })); }
-          catch (failure) { setError(String(failure)); }
-          finally { setSaving(false); }
-        }} style={{ padding: 8 }}><Text style={{ color: colors.accent }}>保存到磁盘</Text></Pressable>
-        <Pressable accessibilityRole="button" onPress={() => setRestart((value) => value + 1)} style={{ padding: 8 }}>
-          <Text style={{ color: colors.accent }}>重新打开官方页面</Text>
-        </Pressable>
-      </View>
-      {error && <Text accessibilityRole="alert" selectable style={{ color: colors.statusDanger }}>操作失败或结果未确认：{error}。不要盲目重试；可切回只读预览或高级命令检查。</Text>}
-    </View>
     {fatal ? <Text style={{ padding: 20, color: colors.foregroundMuted }}>交互连接不可用；只读预览和高级命令仍可使用。</Text>
       : url ? <PreviewFrame url={url} name={file.name} frameRef={frame} onLoad={() => {
         // OfficeCLI sometimes requests location.reload(); a Blob reload alone would serve stale HTML.
