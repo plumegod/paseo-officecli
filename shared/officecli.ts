@@ -10,10 +10,19 @@ export const officeSettings = defineSettings({
   schema: z.object({ executable: z.string().max(4096).default("") }),
 });
 
+const capability = z.object({ status: z.enum(["supported", "missing", "unknown"]), diagnostic: z.string() });
+export const installationStatus = z.object({
+  executable: z.string(), version: z.string(),
+  compatibility: z.enum(["supported", "upgrade-required", "unknown"]), diagnostic: z.string(),
+  capabilities: z.object({ htmlPreview: capability, get: capability, batch: capability, save: capability, mcp: capability }),
+});
+export type InstallationStatus = z.infer<typeof installationStatus>;
+export type Capability = z.infer<typeof capability>;
+
 export const statusRpc = defineRpc({
   name: "officecli.status",
-  input: z.object({}),
-  output: z.object({ executable: z.string(), version: z.string() }),
+  input: z.object({ refresh: z.boolean().optional() }),
+  output: installationStatus,
 });
 
 export const previewRpc = defineRpc({
@@ -48,7 +57,7 @@ const input = z.string().max(MAX_INPUT_CHARS);
 export const commandStateRpc = defineRpc({
   name: "officecli.command.state",
   input: z.object({ workspaceId }),
-  output: z.object({ directory: z.string(), executable: z.string(), job: commandSnapshot.nullable() }),
+  output: z.object({ directory: z.string(), executable: z.string(), installation: installationStatus, job: commandSnapshot.nullable() }),
 });
 export const commandStartRpc = defineRpc({
   name: "officecli.command.start",

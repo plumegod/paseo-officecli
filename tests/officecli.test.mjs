@@ -70,6 +70,7 @@ test("passes paths and shell metacharacters literally, never through a shell", a
 });
 
 test("reports command errors and bounds output", async () => {
-  await assert.rejects(runOfficeCli(process.execPath, ["-e", "console.error('bad document');process.exit(2)"]), /bad document/);
+  await assert.rejects(runOfficeCli(process.execPath, ["-e", "console.error('bad document');process.exit(2)"]), /exit 2.*bad document/);
+  await assert.rejects(runOfficeCli(process.execPath, ["-e", "console.error('help failed');console.log('{\"error\":\"unknown command\"}');process.exit(9)"]), /exit 9.*help failed[\s\S]*unknown command/);
   await assert.rejects(runOfficeCli(process.execPath, ["-e", `process.stdout.write('x'.repeat(${MAX_OUTPUT_BYTES + 1}))`]), /16 MiB/);
 });

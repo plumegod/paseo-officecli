@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { useRpc, type PluginFilePanelProps } from "@getpaseo/plugin/client";
-import { copyText, Modal, ScrollView, SettingsSwitch, TextInput } from "@getpaseo/plugin/client/ui";
+import { copyText, ExternalLink, Modal, ScrollView, SettingsSwitch, TextInput } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { commandInputRpc, commandStartRpc, commandStateRpc, commandStopRpc } from "../shared/officecli";
+import { commandInputRpc, commandStartRpc, commandStateRpc, commandStopRpc, statusRpc } from "../shared/officecli";
 import { MAX_INPUT_CHARS, parseArguments, type CommandSnapshot } from "../shared/commands";
 import { ActionButton, Disclosure } from "./controls";
 
@@ -22,12 +22,14 @@ export function CommandConsole({ workspaceId, theme, layout, path }: Props) {
   const startRpc = useRpc(commandStartRpc);
   const inputRpc = useRpc(commandInputRpc);
   const stopRpc = useRpc(commandStopRpc);
+  const detect = useRpc(statusRpc);
   const queryKey = ["officecli.command", workspaceId];
   const state = useQuery({
     queryKey, queryFn: () => stateRpc({ workspaceId }), retry: false, refetchOnWindowFocus: false,
     refetchInterval: (query) => query.state.data?.job?.status === "running" ? 1000 : false,
   });
-  const update = (job: CommandSnapshot) => queryClient.setQueryData(queryKey, { directory: job.cwd, executable: job.executable, job });
+  const recheck = useMutation({ mutationFn: () => detect({ refresh: true }), onSuccess: (status) => { queryClient.setQueryData(["officecli.status"], status); void state.refetch(); } });
+  const update = (job: CommandSnapshot) => queryClient.setQueryData(queryKey, { ...state.data, directory: job.cwd, executable: job.executable, job });
   const start = useMutation({
     mutationFn: () => startRpc({ workspaceId, args: parseArguments(argsText), input, keepStdinOpen, confirmed: true }),
     onSuccess: (job) => { update(job); setInput(""); setStream("stdout"); setCopyError(""); send.reset(); stop.reset(); },
@@ -53,8 +55,10 @@ export function CommandConsole({ workspaceId, theme, layout, path }: Props) {
   let parseError = "";
   try { args = parseArguments(argsText); }
   catch (error) { parseError = (error as Error).message; }
-  const error = start.error?.message || send.error?.message || stop.error?.message || state.error?.message || copyError;
-  const canRun = !!args && !!state.data && !state.isError && !busy;
+  const error = start.error?.message || send.error?.message || stop.error?.message || recheck.error?.message || state.error?.message || copyError;
+  const installation = state.data?.installation;
+  const blocked = installation?.compatibility === "upgrade-required";
+  const canRun = !!args && !!state.data && !state.isError && !blocked && !busy;
   const colors = theme.colors;
   const text = { color: colors.foreground, fontSize: 13, lineHeight: 20 };
   const muted = { color: colors.foregroundMuted, fontSize: 12, lineHeight: 18 };
@@ -77,11 +81,14 @@ export function CommandConsole({ workspaceId, theme, layout, path }: Props) {
         <Text accessibilityRole="header" style={{ ...text, fontSize: 20, fontWeight: "600" }}>高级命令</Text>
         <Text style={muted}>运行 OfficeCLI 命令。参数使用 JSON 字符串数组，每一项为一个参数；无需填写 officecli。</Text>
         <Text style={muted}>最低支持 OfficeCLI 1.0.160；较旧版本请升级至官方稳定版。后续版本需保持公开接口兼容，否则可能需要更新插件。</Text>
+        {installation && <Text selectable accessibilityRole="alert" style={{ ...muted, color: blocked ? colors.statusDanger : colors.foregroundMuted }}>{installation.diagnostic}</Text>}
+        {blocked && <ExternalLink href="https://github.com/iOfficeAI/OfficeCLI#installation" accessibilityLabel="OfficeCLI 官方安装与升级说明"><Text style={{ color: colors.accent }}>官方安装与升级</Text></ExternalLink>}
+        {installation?.compatibility === "supported" && (["get", "batch", "mcp"] as const).map((key) => installation.capabilities[key].status !== "supported" && <Text key={key} selectable style={muted}>{installation.capabilities[key].diagnostic}</Text>)}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          <ActionButton theme={theme} label="查看文档结构" disabled={busy} onPress={() => preset(["get", path, "/", "--json"])} />
-          <ActionButton theme={theme} label="查看帮助" disabled={busy} onPress={() => preset(["help"])} />
-          <ActionButton theme={theme} label="批处理" disabled={busy} onPress={() => preset(["batch", path])} />
-          <ActionButton theme={theme} label="MCP" disabled={busy} onPress={() => preset(["mcp"], true)} />
+          <ActionButton theme={theme} label="查看文档结构" hint={installation?.capabilities.get.diagnostic} disabled={busy || blocked || installation?.capabilities.get.status === "missing"} onPress={() => preset(["get", path, "/", "--json"])} />
+          <ActionButton theme={theme} label="查看帮助" disabled={busy || blocked} onPress={() => preset(["help"])} />
+          <ActionButton theme={theme} label="批处理" hint={installation?.capabilities.batch.diagnostic} disabled={busy || blocked || installation?.capabilities.batch.status === "missing"} onPress={() => preset(["batch", path])} />
+          <ActionButton theme={theme} label="MCP" hint={installation?.capabilities.mcp.diagnostic} disabled={busy || blocked || installation?.capabilities.mcp.status === "missing"} onPress={() => preset(["mcp"], true)} />
         </View>
         <View style={{ gap: 8 }}>
           <Text style={{ ...text, fontWeight: "500" }}>命令参数</Text>
@@ -95,14 +102,15 @@ export function CommandConsole({ workspaceId, theme, layout, path }: Props) {
           <TextInput accessibilityLabel="OfficeCLI 输入内容" multiline editable={!start.isPending && !send.isPending && (!running || !!job?.stdinOpen)} maxLength={MAX_INPUT_CHARS} value={input} onChangeText={setInput} style={{ ...inputStyle, minHeight: 110 }} />
           {!running && <SettingsSwitch label="保持输入打开" hint="用于需要继续发送输入的长任务。" value={keepStdinOpen} onValueChange={setKeepStdinOpen} disabled={busy} />}
           {running && job?.stdinOpen && <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            <ActionButton theme={theme} label={send.isPending ? "发送中" : "发送输入"} icon="Send" disabled={send.isPending || !input} onPress={() => send.mutate(false)} />
-            <ActionButton theme={theme} label="结束输入（EOF）" disabled={send.isPending} onPress={() => send.mutate(true)} />
+            <ActionButton theme={theme} label={send.isPending ? "发送中" : "发送输入"} icon="Send" disabled={blocked || send.isPending || !input} onPress={() => send.mutate(false)} />
+            <ActionButton theme={theme} label="结束输入（EOF）" disabled={blocked || send.isPending} onPress={() => send.mutate(true)} />
           </View>}
         </Disclosure>
 
         <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
           {running ? <ActionButton theme={theme} label={stop.isPending ? "停止中" : "停止命令"} disabled={stop.isPending} onPress={() => stop.mutate()} />
             : <ActionButton theme={theme} label={start.isPending ? "启动中" : "运行命令"} primary disabled={!canRun} onPress={() => setConfirmOpen(true)} />}
+          <ActionButton theme={theme} label={recheck.isPending ? "检测中" : "重新检测"} disabled={recheck.isPending || busy} onPress={() => recheck.mutate()} />
           {state.isPending && <Text style={muted}>正在准备 OfficeCLI…</Text>}
           {state.isError && <ActionButton theme={theme} label="重试" onPress={() => { void state.refetch(); }} />}
         </View>

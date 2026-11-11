@@ -26,6 +26,14 @@ function nodes(value) {
 const theme = { colors: { surface0: "#111", surface1: "#222", border: "#333", foreground: "#fff", foregroundMuted: "#aaa", accent: "#eee" } };
 const props = { workspaceId: "workspace", theme, layout: { compact: false }, path: "/work/test.docx" };
 
+function installation(overrides = {}) {
+  return {
+    executable: "/bin/officecli", version: "1.0.160", compatibility: "supported", diagnostic: "安装可用；以当前 help 为准。",
+    capabilities: Object.fromEntries(["htmlPreview", "get", "batch", "save", "mcp"].map((key) => [key, { status: "supported", diagnostic: `help supports ${key}` }])),
+    ...overrides,
+  };
+}
+
 function surface(path) {
   const values = [];
   let cursor = 0;
@@ -34,7 +42,9 @@ function surface(path) {
   const h = {
     calls,
     Modal,
-    query: { data: { directory: "/work", executable: "/bin/officecli", job: null }, isPending: false, isError: false, refetch() {} },
+    query: { data: { directory: "/work", executable: "/bin/officecli", installation: installation(), job: null }, isPending: false, isError: false, refetch() {} },
+    statusQuery: { data: installation(), isPending: false, isError: false, async refetch() { return { data: this.data }; } },
+    queries: new Map(), mutations: [],
     settings: { status: "ready", values: { executable: "" }, revision: 1, saving: false },
   };
   const jsx = (type, props) => ({ type, props });
@@ -45,9 +55,9 @@ function surface(path) {
     "@getpaseo/plugin/client": { useRpc: (operation) => (input) => calls.push({ operation, input }), useSettings: () => h.settings },
     "@getpaseo/plugin/client/ui": { Modal, Loading: "Loading", ScrollView: "ScrollView", TextInput: "TextInput", SettingsSwitch: "SettingsSwitch", SettingsCard: "SettingsCard", SettingsSection: "SettingsSection", SettingsInput: "SettingsInput", SettingsAction: "SettingsAction", SettingsRow: "SettingsRow", ExternalLink: "ExternalLink", copyText: async () => {} },
     "@tanstack/react-query": {
-      useQuery: () => h.query,
-      useMutation: (options) => ({ mutate: (...args) => options.mutationFn(...args), isPending: false, reset() {} }),
-      useQueryClient: () => ({ setQueryData: (_, value) => { h.query.data = value; }, invalidateQueries() {} }),
+      useQuery: (options) => { h.queries.set(options.queryKey[0], options); return path === "client/preview.tsx" && options.queryKey[0] === "officecli.status" ? h.statusQuery : h.query; },
+      useMutation: (options) => { h.mutations.push(options); return { mutate: (...args) => options.mutationFn(...args), isPending: false, reset() {} }; },
+      useQueryClient: () => ({ setQueryData: (key, value) => { (key[0] === "officecli.status" ? h.statusQuery : h.query).data = value; }, invalidateQueries() {} }),
     },
     "../shared/officecli": { officeSettings: {}, statusRpc: "status", previewRpc: "preview", commandStateRpc: "state", commandStartRpc: "start", commandInputRpc: "input", commandStopRpc: "stop" },
     "../shared/commands": { MAX_INPUT_CHARS, parseArguments },
@@ -56,7 +66,7 @@ function surface(path) {
     "./watch": { WatchEditor: "WatchEditor" },
     "./web": { supportsPreview: true, createPreviewUrl() {}, revokePreviewUrl() {}, PreviewFrame: "PreviewFrame" },
   });
-  h.render = (overrides = {}) => { cursor = 0; return nodes(Object.values(component)[0]({ ...props, ...overrides })); };
+  h.render = (overrides = {}) => { cursor = 0; h.mutations = []; return nodes(Object.values(component)[0]({ ...props, ...overrides })); };
   return h;
 }
 
@@ -96,6 +106,11 @@ test("file preview preserves watch editing alongside advanced commands", () => {
     button(tree, "保存").props.onPress();
     button(tree, "重载").props.onPress();
     assert.deepEqual(actions, ["save", "reload"]);
+    h.statusQuery.data.capabilities.save = { status: "missing", diagnostic: "当前 help 明确缺少 save" };
+    tree = render();
+    assert.equal(button(tree, "保存").props.disabled, true);
+    assert.equal(tree.find((node) => node.props?.accessibilityRole === "alert").props.children, "当前 help 明确缺少 save");
+    h.statusQuery.data.capabilities.save.status = "supported";
     editor.props.onChrome({ ...chrome, label: "保存中", disabled: true, error: "保存失败" });
     tree = render();
     assert.equal(button(tree, "保存中").props.disabled, true);
@@ -127,7 +142,7 @@ test("action buttons preserve accessibility hints", () => {
 
 test("settings defaults to auto-detection and shows save only after an edit", () => {
   const h = surface("client/settings.tsx");
-  h.query.data = { executable: "/bin/officecli", version: "1.0.160" };
+  h.query.data = installation();
   let tree = h.render();
   const path = tree.find((node) => node.type === "SettingsInput");
   assert.equal(path.props.initialValue, "");
@@ -148,7 +163,7 @@ test("settings defaults to auto-detection and shows save only after an edit", ()
 
 test("settings explains the support policy and can recheck the actual path and version", () => {
   const h = surface("client/settings.tsx");
-  h.query.data = { executable: "/opt/officecli", version: "1.0.100" };
+  h.query.data = installation({ executable: "/opt/officecli", version: "1.0.100", compatibility: "upgrade-required", diagnostic: "需要升级至 1.0.160；文档执行已停止。" });
   let rechecks = 0;
   h.query.refetch = () => { rechecks++; };
   let tree = h.render();
@@ -158,14 +173,14 @@ test("settings explains the support policy and can recheck the actual path and v
   assert.match(policy.props.hint, /公开接口兼容.*可能需要更新插件/);
   assert.match(tree.find((node) => node.type === "SettingsInput").props.hint, /1\.0\.100.*\/opt\/officecli/);
   assert.equal(tree.find((node) => node.type === "ExternalLink").props.href, "https://github.com/iOfficeAI/OfficeCLI#installation");
-  const recheck = tree.find((node) => node.type === "SettingsAction" && node.props.label === "检测路径和版本");
+  const recheck = tree.find((node) => node.type === "SettingsAction" && node.props.label === "检测路径、版本和能力");
   recheck.props.onPress();
   assert.equal(rechecks, 1);
   h.query.isFetching = true;
   tree = h.render();
-  assert.equal(tree.find((node) => node.type === "SettingsAction" && node.props.label === "检测路径和版本").props.disabled, true);
+  assert.equal(tree.find((node) => node.type === "SettingsAction" && node.props.label === "检测路径、版本和能力").props.disabled, true);
   h.query.isFetching = false;
-  h.query.data = { executable: "/new/officecli", version: "1.0.160" };
+  h.query.data = installation({ executable: "/new/officecli" });
   assert.match(h.render().find((node) => node.type === "SettingsInput").props.hint, /1\.0\.160.*\/new\/officecli/);
   h.query.isError = true;
   h.query.error = new Error("Not found");
@@ -217,4 +232,98 @@ test("invalid or unavailable commands stay blocked; running jobs expose only use
   tree = h.render();
   assert.equal(button(tree, "停止命令"), undefined);
   assert.ok(button(tree, "复制完整输出"));
+});
+
+test("settings show tri-state capabilities and explicitly refresh the installed binary", () => {
+  const h = surface("client/settings.tsx");
+  h.query.data = installation({ version: "3.0.0" });
+  h.query.data.capabilities.htmlPreview = { status: "missing", diagnostic: "view modes do not include html" };
+  h.query.data.capabilities.batch = { status: "unknown", diagnostic: "help JSON changed" };
+  const tree = h.render();
+  const rows = tree.filter((node) => node.type === "SettingsRow");
+  assert.match(rows.find((node) => node.props.label === "HTML 预览").props.hint, /明确缺失.*view modes/);
+  assert.match(rows.find((node) => node.props.label === "批处理快捷入口").props.hint, /未知.*JSON changed/);
+  assert.match(rows.find((node) => node.props.label === "MCP 快捷入口").props.hint, /帮助声明支持/);
+  h.queries.get("officecli.status").queryFn();
+  assert.deepEqual(h.calls.at(-1), { operation: "status", input: { refresh: true } });
+});
+
+test("old-version commands are disabled with upgrade guidance and a manual recheck", () => {
+  const h = surface("client/commands.tsx");
+  h.query.data.installation = installation({ version: "1.0.159", compatibility: "upgrade-required", diagnostic: "需要升级：低于 1.0.160；文档执行已停止。" });
+  let rechecks = 0;
+  h.query.refetch = () => { rechecks++; };
+  const tree = h.render();
+  for (const label of ["运行命令", "查看文档结构", "查看帮助", "批处理", "MCP"]) assert.equal(button(tree, label).props.disabled, true);
+  assert.match(tree.find((node) => node.props?.accessibilityRole === "alert").props.children, /需要升级/);
+  assert.equal(tree.find((node) => node.type === "ExternalLink").props.href, "https://github.com/iOfficeAI/OfficeCLI#installation");
+  button(tree, "重新检测").props.onPress();
+  assert.deepEqual(h.calls, [{ operation: "status", input: { refresh: true } }]);
+  const refreshed = installation();
+  h.mutations[0].onSuccess(refreshed);
+  assert.equal(rechecks, 1);
+  assert.equal(h.statusQuery.data, refreshed);
+  assert.equal(h.query.data.installation.compatibility, "upgrade-required");
+  h.query.data.job = { id: "job", status: "running", stdinOpen: true, stdout: "", stderr: "", exitCode: null };
+  const running = h.render();
+  assert.equal(button(running, "发送输入").props.disabled, true);
+  assert.equal(button(running, "结束输入（EOF）").props.disabled, true);
+  assert.equal(button(running, "停止命令").props.disabled, false);
+});
+
+test("missing helpers and unknown detection never become a generic command allowlist", () => {
+  for (const compatibility of ["supported", "unknown"]) {
+    const h = surface("client/commands.tsx");
+    const status = h.query.data.installation;
+    status.compatibility = compatibility;
+    status.capabilities.get = { status: "missing", diagnostic: "unknown command 'get'" };
+    status.capabilities.batch = { status: "unknown", diagnostic: "help unavailable" };
+    let tree = h.render();
+    assert.equal(button(tree, "查看文档结构").props.disabled, true);
+    assert.equal(button(tree, "批处理").props.disabled, false);
+    tree.find((node) => node.type === "TextInput").props.onChangeText('["future-command","--new-flag","a & b"]');
+    tree = h.render();
+    assert.equal(button(tree, "运行命令").props.disabled, false);
+    button(tree, "运行命令").props.onPress();
+    button(h.render(), "确认运行").props.onPress();
+    assert.deepEqual(h.calls.at(-1).input.args, ["future-command", "--new-flag", "a & b"]);
+    assert.equal(h.calls.at(-1).input.confirmed, true);
+    h.mutations[1].onSuccess({ cwd: "/work", executable: "/bin/officecli", id: "job" });
+    assert.equal(h.query.data.installation, status);
+  }
+});
+
+test("preview blocks old or unknown versions and missing HTML, but not unknown help", () => {
+  for (const scenario of ["old", "version-unknown", "html-missing", "help-unknown"]) {
+    const h = surface("client/preview.tsx");
+    const status = h.statusQuery.data;
+    const file = { path: "/work/test.docx", name: "test.docx" };
+    if (scenario === "old") { status.compatibility = "upgrade-required"; status.diagnostic = "需要升级 1.0.160"; }
+    if (scenario === "version-unknown") { status.compatibility = "unknown"; status.diagnostic = "无法识别版本"; }
+    if (scenario.startsWith("html") || scenario === "help-unknown") status.capabilities.htmlPreview = { status: scenario === "html-missing" ? "missing" : "unknown", diagnostic: `${scenario} diagnostic` };
+    const tree = h.render({ file });
+    assert.equal(h.queries.get("officecli.preview").enabled, scenario === "help-unknown");
+    assert.equal(button(tree, "高级命令").props.disabled, undefined);
+    assert.equal(button(tree, "实时预览/选择").props.disabled, ["old", "version-unknown"].includes(scenario));
+    assert.ok(tree.some((node) => node.props?.accessibilityRole === "alert"));
+    if (scenario === "old") assert.ok(tree.find((node) => node.type === "ExternalLink"));
+  }
+});
+
+test("preview manual refresh re-detects capabilities before requesting HTML", () => {
+  const h = surface("client/preview.tsx");
+  let renders = 0;
+  h.query.refetch = () => { renders++; };
+  const tree = h.render({ file: { path: "/work/test.docx" } });
+  h.queries.get("officecli.status").queryFn();
+  assert.deepEqual(h.calls.at(-1), { operation: "status", input: {} });
+  h.statusQuery.data.capabilities.htmlPreview.status = "missing";
+  button(tree, "刷新预览").props.onPress();
+  assert.deepEqual(h.calls.at(-1), { operation: "status", input: { refresh: true } });
+  const recheck = h.mutations[0];
+  recheck.onSuccess(h.statusQuery.data);
+  assert.equal(renders, 0);
+  h.statusQuery.data.capabilities.htmlPreview.status = "supported";
+  recheck.onSuccess(h.statusQuery.data);
+  assert.equal(renders, 1);
 });
