@@ -11,7 +11,11 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const executable = await resolveExecutable();
 console.log(`Official OfficeCLI: ${(await runOfficeCli(executable, ["--version"])).trim()}`);
 const temp = await mkdtemp(join(tmpdir(), "paseo-officecli-live-"));
-after(() => rm(temp, { recursive: true, force: true }));
+after(async () => {
+  // Newer official renderers may open residents; close only this suite's temporary documents.
+  for (const format of ["docx", "xlsx", "pptx"]) await runOfficeCli(executable, ["close", join(temp, `smoke.${format}`)]).catch(() => {});
+  await rm(temp, { recursive: true, force: true });
+});
 test("official installed version and current help pass forward-compatible inspection", async () => {
   const status = await new InstallationInspector().check(executable);
   assert.equal(status.executable, executable);
@@ -33,5 +37,5 @@ for (const format of ["docx", "xlsx", "pptx"]) {
 test("corrupt Office file gives a visible error instead of fake HTML", async () => {
   const file = join(temp, "broken.docx");
   await writeFile(file, "not an Office ZIP");
-  await assert.rejects(renderDocument(executable, file), /OfficeCLI failed/);
+  await assert.rejects(renderDocument(executable, file), /"code":"cliFailed"/);
 });

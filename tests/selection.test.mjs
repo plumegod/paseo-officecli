@@ -21,7 +21,7 @@ test("attachment snapshots require the exact random code and freeze content", ()
   assert.doesNotMatch(item.url, new RegExp(captured.token));
   assert.match(item.text, /原文 中文/);
   assert.doesNotMatch(item.text, /后来修改/);
-  assert.match(item.text, /重新读取并核对/);
+  assert.match(item.text, /reread and verify/);
   assert.equal(item.identifier, "DOCX");
   assert.match(item.url, /^file:/);
 });
@@ -35,7 +35,7 @@ test("selection storage is bounded and clearing removes staged snapshots", () =>
   for (let i = 0; i < 20; i++) latest = store.prepare(document, nodes);
   assert.deepEqual(store.search(oldest.token), { items: [] });
   assert.equal(store.search(latest.token).items.length, 1);
-  assert.throws(() => store.prepare(document, [{ path: "/slide[1]", text: "a".repeat(256 * 1024) }]), /256 KiB/);
+  assert.throws(() => store.prepare(document, [{ path: "/slide[1]", text: "a".repeat(256 * 1024) }]), /"code":"selectionBytes"/);
   store.clear();
   assert.deepEqual(store.search(latest.token), { items: [] });
 });

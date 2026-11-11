@@ -8,6 +8,8 @@ import { createPreviewUrl, PreviewFrame, revokePreviewUrl, type FrameHandle, typ
 import { watchBridge } from "./watch-bridge";
 import { ActionButton } from "./controls";
 import type { createSelectionSource } from "./selection";
+import { useOfficeTranslation } from "./i18n";
+import { message } from "../shared/messages";
 
 interface FrameMessage { source: FrameWindow | null; data: unknown }
 declare const window: {
@@ -19,6 +21,11 @@ declare const window: {
 export type WatchChrome = { save(): void; reload(): void; label: string; disabled: boolean; error: string | null };
 
 export function WatchEditor({ workspaceId, file, theme, onChrome, beginSelection }: Pick<PluginFilePanelProps, "workspaceId" | "file" | "theme"> & { onChrome: (chrome: WatchChrome | null) => void; beginSelection: ReturnType<typeof createSelectionSource>["begin"] }) {
+  const { t, display, locale } = useOfficeTranslation();
+  const translation = useRef({ t, display });
+  translation.current = { t, display };
+  const channelRef = useRef<string | null>(null);
+  const bridgeErrors = () => ({ watchQueue: translation.current.t("watchQueue"), watchRequestTimeout: translation.current.t("watchRequestTimeout"), watchEventUrl: translation.current.t("watchEventUrl") });
   const open = useRpc(watchOpenRpc), request = useRpc(watchRequestRpc), events = useRpc(watchEventsRpc);
   const close = useRpc(watchCloseRpc), save = useRpc(watchSaveRpc), prepare = useRpc(selectionPrepareRpc);
   const api = useRef({ open, request, events, close, save });
@@ -41,12 +48,13 @@ export function WatchEditor({ workspaceId, file, theme, onChrome, beginSelection
   useEffect(() => {
     let alive = true, leaseId: string | null = null, blob: string | null = null, cursor = 0, inflight = 0, refreshing = false;
     const channel = window.crypto.randomUUID();
+    channelRef.current = channel;
     setUrl(null); setState(null); setError(null); setFatal(false); setBusy(0); setSaving(false);
     setSelection([]); setSelecting(0); setPreparing(false);
     const show = (html: string) => {
       if (!alive) return;
       setSelection([]);
-      const next = createPreviewUrl(html, watchBridge(channel, cursor));
+      const next = createPreviewUrl(html, watchBridge(channel, cursor, bridgeErrors()));
       if (blob) revokePreviewUrl(blob);
       blob = next; setUrl(next);
     };
@@ -96,7 +104,7 @@ export function WatchEditor({ workspaceId, file, theme, onChrome, beginSelection
           const detail = failure instanceof Error ? failure.message : String(failure);
           setError(detail);
           if (message.kind === "events") setFatal(true);
-          event.source?.postMessage({ channel, id: message.id, error: detail }, "*");
+          event.source?.postMessage({ channel, id: message.id, error: translation.current.display(detail) }, "*");
         }
       } finally {
         inflight--;
@@ -111,12 +119,14 @@ export function WatchEditor({ workspaceId, file, theme, onChrome, beginSelection
       session.current = leaseId; cursor = opened.cursor; update(opened); show(opened.html);
     }).catch((failure) => { if (alive) { setError(String(failure)); setFatal(true); } });
     return () => {
-      alive = false; session.current = null;
+      alive = false; session.current = null; channelRef.current = null;
       window.removeEventListener("message", receive);
       if (blob) revokePreviewUrl(blob);
       if (leaseId) closing.current = api.current.close({ workspaceId, leaseId }).catch(() => {}); // Lease expiry also cleans up a disconnected client.
     };
   }, [workspaceId, file.path, restart]);
+  const localizeBridge = () => frame.current?.contentWindow?.postMessage({ channel: channelRef.current, kind: "officecli-language", errors: bridgeErrors() }, "*");
+  useEffect(() => { localizeBridge(); }, [locale]);
   const lastLoaded = useRef<string | null>(null);
   const colors = theme.colors;
   const saved = !!state && state.savedRevision !== null && state.savedRevision === state.revision;
@@ -134,11 +144,11 @@ export function WatchEditor({ workspaceId, file, theme, onChrome, beginSelection
     onChrome({
       save: () => { void persist.current.save(); },
       reload: () => persist.current.reload(),
-      label: saving ? "保存中" : busy ? "提交中" : saved ? "已保存" : "保存",
+      label: saving ? t("saving") : busy ? t("submitting") : saved ? t("saved") : t("save"),
       disabled: !state || fatal || saving || busy > 0,
       error,
     });
-  }, [onChrome, state, fatal, saving, busy, saved, error]);
+  }, [onChrome, state, fatal, saving, busy, saved, error, locale]);
   useEffect(() => () => onChrome(null), [onChrome]);
   const capture = async () => {
     const leaseId = session.current;
@@ -147,19 +157,20 @@ export function WatchEditor({ workspaceId, file, theme, onChrome, beginSelection
     setPreparing(true); setError(null);
     try {
       const result = await prepare({ workspaceId, leaseId, paths: selection });
-      if (session.current === leaseId && !publish(result.token)) setError("其他窗口已引用选区，请再点一次。");
+      if (session.current === leaseId && !publish(result.token)) setError(message("selectionRace"));
     } catch (failure) { if (session.current === leaseId) setError(String(failure)); }
     finally { if (session.current === leaseId) setPreparing(false); }
   };
   return <View style={{ flex: 1, minHeight: 0 }}>
     {/\.(docx|pptx)$/i.test(file.path) && !fatal && <View style={{ paddingHorizontal: 16, paddingVertical: 8, gap: 6, borderBottomWidth: 1, borderColor: colors.border }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-        <ActionButton theme={theme} icon="Paperclip" label={preparing ? "引用中" : "引用选中区域"} disabled={!state || selecting > 0 || selection.length === 0 || selection.length > MAX_SELECTION_PATHS || preparing} onPress={() => { void capture(); }} />
-        <Text style={{ color: colors.foregroundMuted, fontSize: 12 }}>{selection.length > MAX_SELECTION_PATHS ? `最多选择 ${MAX_SELECTION_PATHS} 个对象` : "点击段落或对象后再引用。"}</Text>
+        <ActionButton theme={theme} icon="Paperclip" label={preparing ? t("referencing") : t("referenceSelection")} disabled={!state || selecting > 0 || selection.length === 0 || selection.length > MAX_SELECTION_PATHS || preparing} onPress={() => { void capture(); }} />
+        <Text style={{ color: colors.foregroundMuted, fontSize: 12 }}>{selection.length > MAX_SELECTION_PATHS ? t("selectionLimit", { count: MAX_SELECTION_PATHS }) : t("selectFirst")}</Text>
       </View>
     </View>}
-    {fatal ? <Text style={{ padding: 20, color: colors.foregroundMuted }}>交互连接不可用；只读预览和高级命令仍可使用。</Text>
+    {fatal ? <Text style={{ padding: 20, color: colors.foregroundMuted }}>{t("connectionUnavailable")}</Text>
       : url ? <PreviewFrame url={url} name={file.name} frameRef={frame} onLoad={() => {
+        localizeBridge();
         // OfficeCLI sometimes requests location.reload(); a Blob reload alone would serve stale HTML.
         if (lastLoaded.current === url) reload.current();
         lastLoaded.current = url;

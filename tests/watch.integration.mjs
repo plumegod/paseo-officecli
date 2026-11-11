@@ -30,7 +30,7 @@ test("official watch: cell/chart edits, resident save, disk reopen and format li
     const opened = await manager.open("test-workspace", root, file, executable);
     const anotherTab = await manager.open("test-workspace", root, file, executable);
     const otherFile = await manager.open("test-workspace", root, other, executable);
-    await assert.rejects(manager.prepareSelection("test-workspace", root, opened.leaseId, ["/Sheet1/A1"]), /仅支持 Word 和 PowerPoint/);
+    await assert.rejects(manager.prepareSelection("test-workspace", root, opened.leaseId, ["/Sheet1/A1"]), /"code":"selectionFormats"/);
     assert.match(opened.html, /dblclick/); assert.match(opened.html, /\/api\/send/);
     assert.equal(opened.savedRevision, null);
     const edited = await send(opened.leaseId, { path: "/Sheet1/A1", prop: "text", value: "Paseo interactive 中文" });
@@ -89,7 +89,7 @@ test("official watch: cell/chart edits, resident save, disk reopen and format li
       assert.doesNotMatch(attachment.text, extension === "docx" ? /official OfficeCLI renderer/ : /PowerPoint preview inside Paseo/);
       assert.equal(manager.searchSelection("").items[0].text, captured.preview);
       assert.deepEqual(await readFile(path), before, "capturing a selection does not write the document");
-      await assert.rejects(manager.prepareSelection("other-workspace", root, page.leaseId, [first]), /workspace/i);
+      await assert.rejects(manager.prepareSelection("other-workspace", root, page.leaseId, [first]), /"code":"watchExpired"/);
       await assert.rejects(manager.prepareSelection("test-workspace", root, page.leaseId, ["/missing"]));
       await cli("set", path, first, "--prop", "text=Changed after capture", "--json");
       assert.equal(manager.searchSelection(captured.token).items[0].text, attachment.text, "later edits do not change the snapshot");

@@ -11,6 +11,8 @@
   },
   "files": [
     "paseo-plugin.json",
+    "AGENTS.md",
+    "I18N.md",
     "OVERVIEW.md",
     "OVERVIEW.*.md",
     "index.client.ts",

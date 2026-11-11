@@ -9,8 +9,10 @@ import { CommandConsole } from "./commands";
 import { WatchEditor, type WatchChrome } from "./watch";
 import { ActionButton } from "./controls";
 import type { createSelectionSource } from "./selection";
+import { useOfficeTranslation } from "./i18n";
 
 export function OfficePreview({ workspaceId, file, revision, theme, layout, beginSelection }: PluginFilePanelProps & { beginSelection: ReturnType<typeof createSelectionSource>["begin"] }) {
+  const { t, display } = useOfficeTranslation();
   const rpc = useRpc(previewRpc);
   const detect = useRpc(statusRpc);
   const queryClient = useQueryClient();
@@ -45,25 +47,25 @@ export function OfficePreview({ workspaceId, file, revision, theme, layout, begi
   return (
     <View style={{ flex: 1, minHeight: 0, minWidth: 0, backgroundColor: colors.surface0 }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderColor: colors.border }}>
-        {mode === "preview" && supportsPreview && <ActionButton theme={theme} icon="Pencil" label={/\.xlsx$/i.test(file.path) ? "交互编辑" : "实时预览/选择"} hint={/\.xlsx$/i.test(file.path) ? "双击单元格编辑，拖动图表" : "实时预览和选择，不能原位编辑文本"} disabled={status?.compatibility !== "supported" || installation.isError} onPress={() => setMode("watch")} />}
-        <ActionButton theme={theme} icon={mode === "commands" ? "ArrowLeft" : "Terminal"} label={mode === "commands" ? "返回预览" : "高级命令"} onPress={() => setMode(mode === "commands" ? "preview" : "commands")} />
-        {mode === "watch" && <ActionButton theme={theme} icon="ArrowLeft" label="返回预览" onPress={() => setMode("preview")} />}
-        {mode === "preview" && <ActionButton theme={theme} icon="RefreshCw" label={preview.isFetching || recheck.isPending || installation.isFetching ? "刷新中" : "刷新预览"} disabled={preview.isFetching || recheck.isPending || installation.isFetching || !supportsPreview} onPress={() => recheck.mutate()} />}
+        {mode === "preview" && supportsPreview && <ActionButton theme={theme} icon="Pencil" label={/\.xlsx$/i.test(file.path) ? t("interactive") : t("liveSelect")} hint={/\.xlsx$/i.test(file.path) ? t("spreadsheetHint") : t("selectionHint")} disabled={status?.compatibility !== "supported" || installation.isError} onPress={() => setMode("watch")} />}
+        <ActionButton theme={theme} icon={mode === "commands" ? "ArrowLeft" : "Terminal"} label={mode === "commands" ? t("backPreview") : t("advanced")} onPress={() => setMode(mode === "commands" ? "preview" : "commands")} />
+        {mode === "watch" && <ActionButton theme={theme} icon="ArrowLeft" label={t("backPreview")} onPress={() => setMode("preview")} />}
+        {mode === "preview" && <ActionButton theme={theme} icon="RefreshCw" label={preview.isFetching || recheck.isPending || installation.isFetching ? t("refreshing") : t("refreshPreview")} disabled={preview.isFetching || recheck.isPending || installation.isFetching || !supportsPreview} onPress={() => recheck.mutate()} />}
         {mode === "watch" && chrome ? <>
-          <View accessibilityLiveRegion="polite"><ActionButton theme={theme} icon="Save" label={chrome.label} hint={status?.capabilities.save.status === "missing" ? status.capabilities.save.diagnostic : "调用官方 save，不关闭 resident"} disabled={chrome.disabled || status?.compatibility !== "supported" || installation.isError || status.capabilities.save.status === "missing"} onPress={chrome.save} /></View>
-          <ActionButton theme={theme} icon="RefreshCw" label="重载" hint="重新打开官方页面" onPress={chrome.reload} />
-          {(chrome.error || status?.capabilities.save.status === "missing") && <Text accessibilityRole="alert" selectable numberOfLines={1} style={{ flex: 1, color: colors.statusDanger }}>{chrome.error || status?.capabilities.save.diagnostic}</Text>}
+          <View accessibilityLiveRegion="polite"><ActionButton theme={theme} icon="Save" label={chrome.label} hint={status?.capabilities.save.status === "missing" ? display(status.capabilities.save.diagnostic) : t("saveHint")} disabled={chrome.disabled || status?.compatibility !== "supported" || installation.isError || status.capabilities.save.status === "missing"} onPress={chrome.save} /></View>
+          <ActionButton theme={theme} icon="RefreshCw" label={t("reload")} hint={t("reloadHint")} onPress={chrome.reload} />
+          {(chrome.error || status?.capabilities.save.status === "missing") && <Text accessibilityRole="alert" selectable numberOfLines={1} style={{ flex: 1, color: colors.statusDanger }}>{display(chrome.error || status?.capabilities.save.diagnostic)}</Text>}
         </> : null}
       </View>
-      {mode === "preview" && status?.compatibility === "supported" && status.capabilities.htmlPreview.status === "unknown" && <Text selectable accessibilityRole="alert" style={{ padding: 12, color: colors.statusWarning }}>{diagnostic}</Text>}
-      {mode === "preview" && status?.compatibility === "upgrade-required" && <ExternalLink href="https://github.com/iOfficeAI/OfficeCLI#installation" accessibilityLabel="OfficeCLI 官方安装与升级说明"><Text style={{ padding: 12, color: colors.accent }}>官方安装与升级</Text></ExternalLink>}
+      {mode === "preview" && status?.compatibility === "supported" && status.capabilities.htmlPreview.status === "unknown" && <Text selectable accessibilityRole="alert" style={{ padding: 12, color: colors.statusWarning }}>{display(diagnostic)}</Text>}
+      {mode === "preview" && status?.compatibility === "upgrade-required" && <ExternalLink href="https://github.com/iOfficeAI/OfficeCLI#installation" accessibilityLabel={t("officialInstallLabel")}><Text style={{ padding: 12, color: colors.accent }}>{t("officialInstall")}</Text></ExternalLink>}
       {mode === "commands" ? <CommandConsole key={`${workspaceId}:${file.path}`} workspaceId={workspaceId} theme={theme} layout={layout} path={file.path} />
-        : !supportsPreview ? <Text style={{ padding: 20, color: colors.foreground }}>请在 Paseo 桌面端或浏览器打开 OfficeCLI 预览。手机原生客户端暂不支持。</Text>
+        : !supportsPreview ? <Text style={{ padding: 20, color: colors.foreground }}>{t("previewPlatform")}</Text>
         : mode === "watch" ? <WatchEditor key={`${workspaceId}:${file.path}`} workspaceId={workspaceId} file={file} theme={theme} onChrome={setChrome} beginSelection={beginSelection} />
-        : installation.isError ? <Text accessibilityRole="alert" selectable style={{ padding: 20, color: colors.statusDanger }}>{installation.error.message}</Text>
+        : installation.isError ? <Text accessibilityRole="alert" selectable style={{ padding: 20, color: colors.statusDanger }}>{display(installation.error)}</Text>
         : installation.isPending ? <Loading />
-        : blocked ? <Text accessibilityRole="alert" selectable style={{ padding: 20, color: colors.statusDanger }}>{diagnostic}</Text>
-        : preview.isError ? <Text accessibilityRole="alert" selectable style={{ padding: 20, color: colors.statusDanger }}>{preview.error.message}</Text>
+        : blocked ? <Text accessibilityRole="alert" selectable style={{ padding: 20, color: colors.statusDanger }}>{display(diagnostic)}</Text>
+        : preview.isError ? <Text accessibilityRole="alert" selectable style={{ padding: 20, color: colors.statusDanger }}>{display(preview.error)}</Text>
           : url ? <PreviewFrame url={url} name={file.name} /> : <Loading />}
     </View>
   );

@@ -6,6 +6,7 @@ import { access, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, extname, isAbsolute, join, relative, sep } from "node:path";
 import { promisify } from "node:util";
+import { message } from "../shared/messages.ts";
 
 const execute = promisify(execFile);
 export const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
@@ -13,7 +14,7 @@ export const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 export async function resolveExecutable(configured = "", env = process.env): Promise<string> {
   const explicit = configured.trim() || env.OFFICECLI_PATH?.trim();
   if (explicit) {
-    if (!isAbsolute(explicit) || explicit.includes("\0")) throw new Error("OfficeCLI path must be absolute, without surrounding quotes.");
+    if (!isAbsolute(explicit) || explicit.includes("\0")) throw new Error(message("pathAbsolute"));
     await access(explicit, process.platform === "win32" ? constants.F_OK : constants.X_OK);
     return explicit;
   }
@@ -29,7 +30,7 @@ export async function resolveExecutable(configured = "", env = process.env): Pro
       if (!["ENOENT", "ENOTDIR", "EACCES"].includes((error as NodeJS.ErrnoException).code || "")) throw error;
     }
   }
-  throw new Error("OfficeCLI not found. Install the official CLI or set its absolute path in Settings → OfficeCLI.");
+  throw new Error(message("executableMissing"));
 }
 
 export async function runOfficeCli(executable: string, args: string[]): Promise<string> {
@@ -40,28 +41,28 @@ export async function runOfficeCli(executable: string, args: string[]): Promise<
     return stdout;
   } catch (error) {
     const failure = error as Error & { stdout?: string; stderr?: string; killed?: boolean; code?: string | number };
-    if (failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") throw new Error("OfficeCLI preview exceeds the 16 MiB output limit.");
-    if (failure.killed) throw new Error("OfficeCLI timed out after 60 seconds.");
+    if (failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") throw new Error(message("previewLimit"));
+    if (failure.killed) throw new Error(message("cliTimeout"));
     const output = [failure.stderr, failure.stdout].filter(Boolean).join("\n") || failure.message;
-    throw new Error(`OfficeCLI failed (exit ${failure.code ?? "unknown"}): ${output.trim().slice(0, 2000)}`);
+    throw new Error(message("cliFailed", { code: failure.code ?? "?", detail: output.trim().slice(0, 2000) }));
   }
 }
 
 export async function resolveDocument(root: string, path: string): Promise<string> {
-  if (!isAbsolute(path) || path.includes("\0")) throw new Error("Expected an absolute document path.");
+  if (!isAbsolute(path) || path.includes("\0")) throw new Error(message("documentAbsolute"));
   const [realRoot, target] = await Promise.all([realpath(root), realpath(path)]);
   const inside = relative(realRoot, target);
   if (!inside || inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
-    throw new Error("Document must be inside the selected workspace.");
+    throw new Error(message("documentBoundary"));
   }
-  if (![".docx", ".xlsx", ".pptx"].includes(extname(target).toLowerCase())) throw new Error("Supported documents: .docx, .xlsx, .pptx.");
-  if (!(await stat(target)).isFile()) throw new Error("Document is not a regular file.");
+  if (![".docx", ".xlsx", ".pptx"].includes(extname(target).toLowerCase())) throw new Error(message("documentType"));
+  if (!(await stat(target)).isFile()) throw new Error(message("documentFile"));
   return target;
 }
 
 export async function renderDocument(executable: string, path: string): Promise<string> {
   const html = await runOfficeCli(executable, ["view", path, "html"]);
-  if (!/<head(?:\s[^>]*)?>/i.test(html)) throw new Error("OfficeCLI did not return an HTML document. Check the official CLI's view command.");
+  if (!/<head(?:\s[^>]*)?>/i.test(html)) throw new Error(message("invalidHtml"));
   return html;
 }
 
@@ -76,10 +77,10 @@ export class CommandRunner {
   }
 
   start(workspaceId: string, cwd: string, executable: string, args: string[], input: string, keepStdinOpen: boolean): CommandSnapshot {
-    if (this.jobs.get(workspaceId)?.state.status === "running") throw new Error("A command is already running in this workspace.");
+    if (this.jobs.get(workspaceId)?.state.status === "running") throw new Error(message("commandRunning"));
     if (!this.jobs.has(workspaceId) && this.jobs.size >= 8) {
       const oldestFinished = [...this.jobs].find(([, job]) => job.state.status !== "running");
-      if (!oldestFinished) throw new Error("Eight workspaces already have running commands. Stop one first.");
+      if (!oldestFinished) throw new Error(message("workspaceLimit"));
       this.jobs.delete(oldestFinished[0]);
     }
     const child = spawn(executable, args, { cwd, windowsHide: true, shell: false, stdio: "pipe" });
@@ -94,7 +95,7 @@ export class CommandRunner {
       job.state[stream] += bytes.subarray(0, Math.max(0, remaining)).toString("utf8");
       job.bytes += Math.min(bytes.length, Math.max(0, remaining));
       if (bytes.length > remaining && !job.state.error) {
-        job.state.error = "Output exceeds 16 MiB; command stopped. Already applied changes are not rolled back.";
+        job.state.error = message("outputLimit");
         child.kill("SIGKILL");
       }
     };
@@ -116,8 +117,8 @@ export class CommandRunner {
 
   input(workspaceId: string, jobId: string, input: string, eof: boolean): CommandSnapshot {
     const job = this.current(workspaceId, jobId);
-    if (job.state.status !== "running" || !job.state.stdinOpen || job.child.stdin.destroyed) throw new Error("The command's stdin is closed.");
-    if (job.child.stdin.writableLength + Buffer.byteLength(input) > 4 * 1024 * 1024) throw new Error("stdin is busy. Wait for the command to consume the queued input.");
+    if (job.state.status !== "running" || !job.state.stdinOpen || job.child.stdin.destroyed) throw new Error(message("stdinClosed"));
+    if (job.child.stdin.writableLength + Buffer.byteLength(input) > 4 * 1024 * 1024) throw new Error(message("stdinBusy"));
     if (eof) { job.state.stdinOpen = false; job.child.stdin.end(input); }
     else if (input) job.child.stdin.write(input);
     return this.get(workspaceId)!;
@@ -136,7 +137,7 @@ export class CommandRunner {
 
   private current(workspaceId: string, jobId: string): Job {
     const job = this.jobs.get(workspaceId);
-    if (!job || job.state.id !== jobId) throw new Error("Command not found or replaced by a newer command.");
+    if (!job || job.state.id !== jobId) throw new Error(message("commandMissing"));
     return job;
   }
 }
