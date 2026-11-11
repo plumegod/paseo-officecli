@@ -31,11 +31,13 @@ export function OfficeSettings({ theme, layout }: PluginSurfaceProps) {
               disabled={settings.saving} error={settings.saveError} onPress={() => {
                 void settings.save({ executable: path.trim() }, settings.revision).then((saved) => { if (saved) void check.refetch(); });
               }} />}
-            {check.isError && <SettingsRow label="安装 OfficeCLI">
-              <ExternalLink href="https://github.com/iOfficeAI/OfficeCLI#installation" accessibilityLabel="OfficeCLI 官方安装说明">
-                <Text style={{ color: colors.accent, fontSize: 13 }}>官方说明</Text>
+            <SettingsAction label="检测路径和版本" actionLabel={check.isFetching ? "检测中" : "重新检测"}
+              disabled={check.isFetching} onPress={() => { void check.refetch(); }} />
+            <SettingsRow label="支持版本" hint="最低支持 OfficeCLI 1.0.160；较旧版本请升级至官方稳定版。后续版本需保持公开接口兼容，否则可能需要更新插件。">
+              <ExternalLink href="https://github.com/iOfficeAI/OfficeCLI#installation" accessibilityLabel="OfficeCLI 官方安装与升级说明">
+                <Text style={{ color: colors.accent, fontSize: 13 }}>官方安装与升级</Text>
               </ExternalLink>
-            </SettingsRow>}
+            </SettingsRow>
           </SettingsCard>
         </SettingsSection>
       </View>
