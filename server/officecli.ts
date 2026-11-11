@@ -39,10 +39,11 @@ export async function runOfficeCli(executable: string, args: string[]): Promise<
     });
     return stdout;
   } catch (error) {
-    const failure = error as Error & { stderr?: string; killed?: boolean; code?: string | number };
+    const failure = error as Error & { stdout?: string; stderr?: string; killed?: boolean; code?: string | number };
     if (failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") throw new Error("OfficeCLI preview exceeds the 16 MiB output limit.");
     if (failure.killed) throw new Error("OfficeCLI timed out after 60 seconds.");
-    throw new Error(`OfficeCLI failed: ${(failure.stderr || failure.message).trim().slice(0, 2000)}`);
+    const output = [failure.stderr, failure.stdout].filter(Boolean).join("\n") || failure.message;
+    throw new Error(`OfficeCLI failed (exit ${failure.code ?? "unknown"}): ${output.trim().slice(0, 2000)}`);
   }
 }
 
