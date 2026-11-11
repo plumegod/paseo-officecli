@@ -100,7 +100,7 @@ export function WatchEditor({ workspaceId, file, theme }: Pick<PluginFilePanelPr
   return <View style={{ flex: 1, minHeight: 0 }}>
     <View style={{ padding: 12, gap: 8, borderBottomWidth: 1, borderColor: colors.border }}>
       <Text style={{ color: colors.foreground }}>
-        {xlsx ? "官方 watch：双击单元格编辑，拖动图表调整位置。" : "官方 watch：实时预览和元素选择；此版本不支持 Word/PPTX 原位文本编辑，请使用命令工作台。"}
+        {xlsx ? "官方 watch：双击单元格编辑，拖动图表调整位置。" : "官方 watch：实时预览和元素选择；此版本不支持 Word/PPTX 原位文本编辑，请使用高级命令。"}
       </Text>
       <Text accessibilityLiveRegion="polite" style={{ color: colors.foregroundMuted }}>
         {saving ? "正在请求官方 save…" : busy ? "正在向官方提交修改，尚未确认成功…"
@@ -120,9 +120,9 @@ export function WatchEditor({ workspaceId, file, theme }: Pick<PluginFilePanelPr
           <Text style={{ color: colors.accent }}>重新打开官方页面</Text>
         </Pressable>
       </View>
-      {error && <Text accessibilityRole="alert" selectable style={{ color: colors.statusDanger }}>操作失败或结果未确认：{error}。不要盲目重试；可切回只读预览或命令工作台检查。</Text>}
+      {error && <Text accessibilityRole="alert" selectable style={{ color: colors.statusDanger }}>操作失败或结果未确认：{error}。不要盲目重试；可切回只读预览或高级命令检查。</Text>}
     </View>
-    {fatal ? <Text style={{ padding: 20, color: colors.foregroundMuted }}>交互连接不可用；只读预览和完整命令工作台仍可使用。</Text>
+    {fatal ? <Text style={{ padding: 20, color: colors.foregroundMuted }}>交互连接不可用；只读预览和高级命令仍可使用。</Text>
       : url ? <PreviewFrame url={url} name={file.name} frameRef={frame} onLoad={() => {
         // OfficeCLI sometimes requests location.reload(); a Blob reload alone would serve stale HTML.
         if (lastLoaded.current === url) reload.current();
