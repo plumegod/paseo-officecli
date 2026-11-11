@@ -76,6 +76,7 @@ export function CommandConsole({ workspaceId, theme, layout, path }: Props) {
       <View style={{ width: "100%", maxWidth: 720, alignSelf: "center", gap: 16 }}>
         <Text accessibilityRole="header" style={{ ...text, fontSize: 20, fontWeight: "600" }}>高级命令</Text>
         <Text style={muted}>运行 OfficeCLI 命令。参数使用 JSON 字符串数组，每一项为一个参数；无需填写 officecli。</Text>
+        <Text style={muted}>最低支持 OfficeCLI 1.0.160；较旧版本请升级至官方稳定版。后续版本需保持公开接口兼容，否则可能需要更新插件。</Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
           <ActionButton theme={theme} label="查看文档结构" disabled={busy} onPress={() => preset(["get", path, "/", "--json"])} />
           <ActionButton theme={theme} label="查看帮助" disabled={busy} onPress={() => preset(["help"])} />
@@ -125,7 +126,7 @@ export function CommandConsole({ workspaceId, theme, layout, path }: Props) {
       <Modal title="确认运行命令" open={confirmOpen} onOpenChange={setConfirmOpen}>
         <Modal.Content>
           <View style={{ gap: 12 }}>
-            <Text style={text}>命令以宿主账户执行，可修改工作区外文件、访问网络或更改全局配置。停止不会撤销已生效的更改。</Text>
+            <Text style={text}>命令以宿主账户执行，可修改工作区外文件、访问网络或更改全局配置。请备份重要文件；执行失败（包括非零退出）、停止或超限终止不等于撤销，请检查文件状态。</Text>
             <Text selectable style={muted}>程序：{state.data?.executable}</Text>
             <Text selectable style={muted}>工作目录：{state.data?.directory}</Text>
             <Text selectable style={mono}>{args ? JSON.stringify(args, null, 2) : argsText}</Text>

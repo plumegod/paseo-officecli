@@ -132,12 +132,13 @@ test("settings defaults to auto-detection and shows save only after an edit", ()
   const path = tree.find((node) => node.type === "SettingsInput");
   assert.equal(path.props.initialValue, "");
   assert.equal(path.props.placeholder, "自动查找");
-  assert.equal(tree.some((node) => node.type === "SettingsAction"), false);
+  const save = (nodes) => nodes.find((node) => node.type === "SettingsAction" && node.props.label === "保存更改");
+  assert.equal(save(tree), undefined);
   path.props.onChangeText("/opt/officecli");
   tree = h.render();
-  assert.equal(tree.find((node) => node.type === "SettingsAction").props.disabled, false);
+  assert.equal(save(tree).props.disabled, false);
   tree.find((node) => node.type === "SettingsInput").props.onChangeText("");
-  assert.equal(h.render().some((node) => node.type === "SettingsAction"), false);
+  assert.equal(save(h.render()), undefined);
   h.query.isError = true;
   h.query.error = new Error("Not found");
   const input = h.render().find((node) => node.type === "SettingsInput");
@@ -145,15 +146,45 @@ test("settings defaults to auto-detection and shows save only after an edit", ()
   assert.doesNotMatch(input.props.hint, /1\.0\.160/);
 });
 
+test("settings explains the support policy and can recheck the actual path and version", () => {
+  const h = surface("client/settings.tsx");
+  h.query.data = { executable: "/opt/officecli", version: "1.0.100" };
+  let rechecks = 0;
+  h.query.refetch = () => { rechecks++; };
+  let tree = h.render();
+  const policy = tree.find((node) => node.type === "SettingsRow" && node.props.label === "支持版本");
+  assert.match(policy.props.hint, /1\.0\.160/);
+  assert.match(policy.props.hint, /升级.*官方稳定版/);
+  assert.match(policy.props.hint, /公开接口兼容.*可能需要更新插件/);
+  assert.match(tree.find((node) => node.type === "SettingsInput").props.hint, /1\.0\.100.*\/opt\/officecli/);
+  assert.equal(tree.find((node) => node.type === "ExternalLink").props.href, "https://github.com/iOfficeAI/OfficeCLI#installation");
+  const recheck = tree.find((node) => node.type === "SettingsAction" && node.props.label === "检测路径和版本");
+  recheck.props.onPress();
+  assert.equal(rechecks, 1);
+  h.query.isFetching = true;
+  tree = h.render();
+  assert.equal(tree.find((node) => node.type === "SettingsAction" && node.props.label === "检测路径和版本").props.disabled, true);
+  h.query.isFetching = false;
+  h.query.data = { executable: "/new/officecli", version: "1.0.160" };
+  assert.match(h.render().find((node) => node.type === "SettingsInput").props.hint, /1\.0\.160.*\/new\/officecli/);
+  h.query.isError = true;
+  h.query.error = new Error("Not found");
+  assert.ok(h.render().find((node) => node.type === "ExternalLink"));
+});
+
 test("file commands require a separate execution confirmation and no empty result or stop control", () => {
   const h = surface("client/commands.tsx");
   let tree = h.render();
+  assert.ok(tree.some((node) => node.type === "Text" && typeof node.props.children === "string" && /1\.0\.160.*升级.*官方稳定版.*公开接口兼容.*可能需要更新插件/.test(node.props.children)));
   assert.equal(button(tree, "停止命令"), undefined);
   assert.equal(button(tree, "复制完整输出"), undefined);
   assert.equal(tree.find((node) => node.type === "Disclosure").props.open, false);
   button(tree, "运行命令").props.onPress();
   tree = h.render();
   assert.equal(tree.find((node) => node.type === h.Modal).props.open, true);
+  const warning = tree.find((node) => node.type === "Text" && typeof node.props.children === "string" && node.props.children.includes("命令以宿主账户执行"));
+  assert.match(warning.props.children, /备份/);
+  assert.match(warning.props.children, /执行失败.*非零退出.*停止.*超限.*不等于撤销/);
   assert.equal(h.calls.length, 0);
   button(tree, "取消").props.onPress();
   assert.equal(h.render().find((node) => node.type === h.Modal).props.open, false);
