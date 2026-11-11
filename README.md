@@ -165,11 +165,15 @@ paseo plugin reload paseo-officecli
 npm ci
 npm run typecheck
 npm test
-# 需要已安装的官方 OfficeCLI；包含 watch/resident 和真实 MCP 长运行测试，约 2 分钟：
+# 需要已安装的官方 OfficeCLI；文件预览、命令及真实 MCP 长运行回归：
+npm run test:regression
+# 另包含 watch/resident 测试，约 2 分钟：
 npm run test:integration
 ```
 
 测试不跳过缺失依赖：找不到 OfficeCLI 时直接失败。集成测试创建临时文档，不打开或关闭用户的 resident。
+
+GitHub Actions 在 PR、`main` push、手动触发及每日定时运行 Windows x64 回归：只测试 1.0.160 和官方最新稳定版，相同时去重。工作流下载官方发行资产并校验 `SHA256SUMS` 和实际版本，使用临时目录与独立 `OFFICECLI_PATH`，不安装或替换用户程序。每个版本的校验信息、测试输出和失败日志保存在对应的 Actions artifact 中；获取或验证失败会使检查失败。
 
 - 单元测试覆盖路径边界、argv 不经 shell、未知未来命令、stdin / EOF、退出错误、停止与任务身份、输出和保留数量上限，以及 watch 路由白名单、嵌套业务失败、iframe 消息身份、SSE 转发、同文件多租约、快速重开、进程退出、事件断档与跨文件拒绝。
 - 官方 CLI 集成测试覆盖三种预览且原文件不变，以及创建、文本 / JSON / 样式 / 公式读取、问题分析、字体颜色和布局修改、图表图片、克隆 / 移动 / 删除、dump → batch 跨文档重放、原子批处理失败不写入、MCP 双向 stdio 持续超过 60 秒后停止。

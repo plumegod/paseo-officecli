@@ -1,0 +1,118 @@
+---
+name: OfficeCLI stable regression
+
+'on':
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  releases:
+    name: Resolve official releases
+    runs-on: windows-2022
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Prepare result directory
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'officecli-results'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          "OFFICECLI_RESULTS_DIR=$dir" >> $env:GITHUB_ENV
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Resolve latest stable and baseline
+        id: matrix
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $log = Join-Path $env:OFFICECLI_RESULTS_DIR 'release-discovery.log'
+          node .github/scripts/officecli-regression.mjs matrix 2>&1 |
+            Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            throw "Official release discovery failed; see $log."
+          }
+      - name: Upload release discovery log
+        if: always()
+        # actions/upload-artifact v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: officecli-release-discovery
+          path: ${{ runner.temp }}\officecli-results
+          if-no-files-found: warn
+
+  regression:
+    name: Windows x64 / ${{ matrix.tag }}
+    needs: releases
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.releases.outputs.matrix) }}
+    env:
+      OFFICECLI_SKIP_UPDATE: '1'
+      OFFICECLI_NO_AUTO_INSTALL: '1'
+      OFFICECLI_NO_AUTO_RESIDENT: '1'
+    steps:
+      - name: Prepare result directory
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'officecli-results'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          "OFFICECLI_RESULTS_DIR=$dir" >> $env:GITHUB_ENV
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Download and verify OfficeCLI
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OFFICECLI_TAG: ${{ matrix.tag }}
+        run: |
+          $log = Join-Path $env:OFFICECLI_RESULTS_DIR 'installation.log'
+          node .github/scripts/officecli-regression.mjs install `
+            $env:OFFICECLI_TAG 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            throw "OfficeCLI installation or verification failed; see $log."
+          }
+      - name: Install project dependencies
+        run: |
+          $log = Join-Path $env:OFFICECLI_RESULTS_DIR 'npm-ci.log'
+          npm ci 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { throw "npm ci failed; see $log." }
+      - name: Typecheck
+        run: |
+          $log = Join-Path $env:OFFICECLI_RESULTS_DIR 'typecheck.log'
+          npm run typecheck 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { throw "Typecheck failed; see $log." }
+      - name: Unit tests
+        run: |
+          $log = Join-Path $env:OFFICECLI_RESULTS_DIR 'unit-tests.log'
+          npm test 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { throw "Unit tests failed; see $log." }
+      - name: Real document and MCP regression
+        run: |
+          $log = Join-Path $env:OFFICECLI_RESULTS_DIR 'integration-tests.log'
+          npm run test:regression 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            throw "Official behavior or plugin regression; see $log."
+          }
+      - name: Upload results and failure logs
+        if: always()
+        # actions/upload-artifact v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: officecli-regression-${{ matrix.tag }}
+          path: ${{ runner.temp }}\officecli-results
+          if-no-files-found: warn
