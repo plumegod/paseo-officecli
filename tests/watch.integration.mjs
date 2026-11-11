@@ -12,6 +12,7 @@ test("official watch: cell/chart edits, resident save, disk reopen and format li
   const executable = await resolveExecutable();
   const manager = new WatchManager();
   const file = join(root, "中文 editable.xlsx"), other = join(root, "other.xlsx");
+  const documents = [file, other];
   const environment = { noResident: process.env.OFFICECLI_NO_AUTO_RESIDENT, flush: process.env.OFFICECLI_RESIDENT_FLUSH };
   const cli = (...args) => runOfficeCli(executable, args);
   const get = async (path, selector) => JSON.parse(await cli("get", path, selector, "--json")).data.results[0] ?? {};
@@ -29,6 +30,7 @@ test("official watch: cell/chart edits, resident save, disk reopen and format li
     const opened = await manager.open("test-workspace", root, file, executable);
     const anotherTab = await manager.open("test-workspace", root, file, executable);
     const otherFile = await manager.open("test-workspace", root, other, executable);
+    await assert.rejects(manager.prepareSelection("test-workspace", root, opened.leaseId, ["/Sheet1/A1"]), /仅支持 Word 和 PowerPoint/);
     assert.match(opened.html, /dblclick/); assert.match(opened.html, /\/api\/send/);
     assert.equal(opened.savedRevision, null);
     const edited = await send(opened.leaseId, { path: "/Sheet1/A1", prop: "text", value: "Paseo interactive 中文" });
@@ -61,17 +63,47 @@ test("official watch: cell/chart edits, resident save, disk reopen and format li
     await manager.close("test-workspace", otherFile.leaseId);
     for (const extension of ["docx", "pptx"]) {
       const path = join(root, `preview.${extension}`);
+      documents.push(path);
       await copyFile(resolve(`examples/smoke.${extension}`), path);
+      const before = await readFile(path);
+      await cli("open", path);
       const page = await manager.open("test-workspace", root, path, executable);
+      const secondTab = await manager.open("test-workspace", root, path, executable);
       assert.match(page.html, /data-path=/);
-      await manager.request("test-workspace", root, page.leaseId, { route: "/api/selection", method: "POST", body: { paths: [extension === "docx" ? "/body/p[1]" : "/slide[1]/shape[@id=100000]"] } });
+      const first = extension === "docx" ? "/body/p[1]" : "/slide[1]/shape[@id=100000]";
+      const second = extension === "docx" ? "/body/p[2]" : "/slide[1]/shape[@id=100001]";
+      const select = (leaseId, selected) => manager.request("test-workspace", root, leaseId, { route: "/api/selection", method: "POST", body: { paths: [selected] } });
+      await select(page.leaseId, first);
+      let updates;
+      for (let attempt = 0; attempt < 30; attempt++) {
+        updates = await manager.events("test-workspace", root, page.leaseId, page.cursor);
+        if (updates.events.some((event) => event.type === "update" && event.data.includes("selection-update"))) break;
+        await delay(200);
+      }
+      assert.ok(updates.events.some((event) => event.type === "update" && event.data.includes("selection-update")), "selection SSE reaches the client");
+      await select(secondTab.leaseId, second);
+      const captured = await manager.prepareSelection("test-workspace", root, page.leaseId, [first]);
+      assert.match(captured.preview, extension === "docx" ? /Word preview/ : /Paseo OfficeCLI/);
+      const attachment = manager.searchSelection(captured.token).items[0];
+      assert.match(attachment.text, extension === "docx" ? /paraId=00100000/ : /shape\[@id=100000\]/);
+      assert.doesNotMatch(attachment.text, extension === "docx" ? /official OfficeCLI renderer/ : /PowerPoint preview inside Paseo/);
+      assert.equal(manager.searchSelection("").items[0].text, captured.preview);
+      assert.deepEqual(await readFile(path), before, "capturing a selection does not write the document");
+      await assert.rejects(manager.prepareSelection("other-workspace", root, page.leaseId, [first]), /workspace/i);
+      await assert.rejects(manager.prepareSelection("test-workspace", root, page.leaseId, ["/missing"]));
+      await cli("set", path, first, "--prop", "text=Changed after capture", "--json");
+      assert.equal(manager.searchSelection(captured.token).items[0].text, attachment.text, "later edits do not change the snapshot");
+      const residentSnapshot = await manager.prepareSelection("test-workspace", root, page.leaseId, [first]);
+      assert.match(residentSnapshot.preview, /Changed after capture/, "capture reads the current resident, not an old disk copy");
+      assert.deepEqual(await readFile(path), before, "resident changes are not confused with saved disk state");
       await manager.close("test-workspace", page.leaseId);
+      await manager.close("test-workspace", secondTab.leaseId);
     }
     await manager.dispose();
     assert.match(await cli("open", file), /already|running|resident/i, "disposing watch does not close the resident");
   } finally {
     await manager.dispose();
-    for (const path of [file, other]) await cli("close", path).catch(() => {}); // Only documents this test created.
+    for (const path of documents) await cli("close", path).catch(() => {}); // Only documents this test created.
     for (const [key, value] of [["OFFICECLI_NO_AUTO_RESIDENT", environment.noResident], ["OFFICECLI_RESIDENT_FLUSH", environment.flush]]) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }

@@ -8,8 +8,9 @@ import { createPreviewUrl, PreviewFrame, revokePreviewUrl, supportsPreview } fro
 import { CommandConsole } from "./commands";
 import { WatchEditor, type WatchChrome } from "./watch";
 import { ActionButton } from "./controls";
+import type { createSelectionSource } from "./selection";
 
-export function OfficePreview({ workspaceId, file, revision, theme, layout }: PluginFilePanelProps) {
+export function OfficePreview({ workspaceId, file, revision, theme, layout, beginSelection }: PluginFilePanelProps & { beginSelection: ReturnType<typeof createSelectionSource>["begin"] }) {
   const rpc = useRpc(previewRpc);
   const detect = useRpc(statusRpc);
   const queryClient = useQueryClient();
@@ -58,7 +59,7 @@ export function OfficePreview({ workspaceId, file, revision, theme, layout }: Pl
       {mode === "preview" && status?.compatibility === "upgrade-required" && <ExternalLink href="https://github.com/iOfficeAI/OfficeCLI#installation" accessibilityLabel="OfficeCLI 官方安装与升级说明"><Text style={{ padding: 12, color: colors.accent }}>官方安装与升级</Text></ExternalLink>}
       {mode === "commands" ? <CommandConsole key={`${workspaceId}:${file.path}`} workspaceId={workspaceId} theme={theme} layout={layout} path={file.path} />
         : !supportsPreview ? <Text style={{ padding: 20, color: colors.foreground }}>请在 Paseo 桌面端或浏览器打开 OfficeCLI 预览。手机原生客户端暂不支持。</Text>
-        : mode === "watch" ? <WatchEditor key={`${workspaceId}:${file.path}`} workspaceId={workspaceId} file={file} theme={theme} onChrome={setChrome} />
+        : mode === "watch" ? <WatchEditor key={`${workspaceId}:${file.path}`} workspaceId={workspaceId} file={file} theme={theme} onChrome={setChrome} beginSelection={beginSelection} />
         : installation.isError ? <Text accessibilityRole="alert" selectable style={{ padding: 20, color: colors.statusDanger }}>{installation.error.message}</Text>
         : installation.isPending ? <Loading />
         : blocked ? <Text accessibilityRole="alert" selectable style={{ padding: 20, color: colors.statusDanger }}>{diagnostic}</Text>

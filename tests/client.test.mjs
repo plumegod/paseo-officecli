@@ -72,18 +72,25 @@ function surface(path) {
 
 const button = (tree, label) => tree.find((node) => node.type === "ActionButton" && node.props.label === label);
 
-test("navigation registers only a file panel and native settings", () => {
-  const { default: contribute } = load("index.client.tsx", { "./client/preview": { OfficePreview: "Preview" }, "./client/settings": { OfficeSettings: "Settings" } });
-  const registrations = [];
+test("navigation registers the file panel and settings, and cleans up prepared selections", () => {
   const disposed = [];
+  const selections = { begin() {}, clear: () => disposed.push("selection") };
+  const { default: contribute } = load("index.client.tsx", {
+    "react/jsx-runtime": { jsx: (type, props) => ({ type, props }) },
+    "./client/preview": { OfficePreview: "Preview" },
+    "./client/selection": { createSelectionSource: () => selections },
+    "./client/settings": { OfficeSettings: "Settings" },
+  });
+  const registrations = [];
   const client = Object.fromEntries(["addFilePanel", "addSettingsScreen"].map((name) => [name, (value) => {
     registrations.push({ name, ...value });
     return () => disposed.push(name);
   }]));
   const cleanup = contribute(client);
   assert.deepEqual(registrations.map(({ name, id }) => [name, id]), [["addFilePanel", "officecli"], ["addSettingsScreen", "officecli"]]);
+  assert.equal(registrations[0].Component({}).props.beginSelection, selections.begin);
   cleanup();
-  assert.deepEqual(disposed, ["addFilePanel", "addSettingsScreen"]);
+  assert.deepEqual(disposed, ["addFilePanel", "addSettingsScreen", "selection"]);
 });
 
 test("file preview preserves watch editing alongside advanced commands", () => {

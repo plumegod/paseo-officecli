@@ -1,8 +1,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { extname, resolve } from "node:path";
 import { MAX_OUTPUT_BYTES, resolveDocument, runOfficeCli } from "./officecli.ts";
-import { MAX_WATCH_BODY, watchRequest, type WatchEvent, type WatchRequest, type WatchState } from "../shared/watch.ts";
+import { MAX_SELECTION_BYTES, SelectionStore } from "./selection.ts";
+import { MAX_SELECTION_PATHS, MAX_WATCH_BODY, selectionPaths, watchRequest, type WatchEvent, type WatchRequest, type WatchState } from "../shared/watch.ts";
 
 const LEASE_MS = 45_000;
 type Session = {
@@ -13,7 +14,7 @@ type Session = {
 type Lease = { workspace: string; session: Session; touched: number };
 
 // HTTP success only acknowledges transport; /api/send wraps the CLI's own JSON verdict.
-export function officialResult(text: string, wrapped = false): void {
+export function officialResult(text: string, wrapped = false): { data?: unknown } {
   let result;
   try {
     result = JSON.parse(text);
@@ -23,6 +24,7 @@ export function officialResult(text: string, wrapped = false): void {
     }
   } catch (error) { throw new Error(`Unrecognized OfficeCLI result: ${String(error).slice(0, 500)}`); }
   if (result?.success !== true) throw new Error(`OfficeCLI: ${JSON.stringify(result?.error || result?.message || result).slice(0, 2000)}`);
+  return result;
 }
 
 async function textResponse(response: Response): Promise<string> {
@@ -41,6 +43,7 @@ async function textResponse(response: Response): Promise<string> {
 export class WatchManager {
   private sessions = new Map<string, Session>();
   private leases = new Map<string, Lease>();
+  private selections = new SelectionStore();
   private disposed = false;
   private sweep = setInterval(() => {
     for (const [id, lease] of this.leases) {
@@ -108,6 +111,32 @@ export class WatchManager {
     });
   }
 
+  async prepareSelection(workspace: string, root: string, leaseId: string, input: string[]) {
+    const paths = selectionPaths.min(1).max(MAX_SELECTION_PATHS).parse(input);
+    const session = await this.current(workspace, root, leaseId);
+    if (![".docx", ".pptx"].includes(extname(session.path).toLowerCase())) throw new Error("选区引用目前仅支持 Word 和 PowerPoint。");
+    return this.serialize(session, async () => {
+      await this.identity(session);
+      let bytes = 0;
+      const nodes: Array<{ path: string; text?: unknown; children?: unknown; [key: string]: unknown }> = [];
+      for (const path of paths) {
+        const output = await runOfficeCli(session.executable, ["get", session.path, path, "--depth", "4", "--json"]);
+        bytes += Buffer.byteLength(output);
+        if (bytes > MAX_SELECTION_BYTES) throw new Error("选区快照超过 256 KiB，请选择更少的对象。");
+        const data = officialResult(output).data as { matches?: number; results?: Array<{ path?: unknown; text?: unknown; children?: unknown }> } | undefined;
+        const node = data?.results?.[0];
+        if (!Array.isArray(data?.results) || data.matches !== 1 || data.results.length !== 1 || typeof node?.path !== "string" || !node.path.startsWith("/")) {
+          throw new Error(`无法唯一定位选中的对象：${path}。请重新选择。`);
+        }
+        nodes.push(node as { path: string; text?: unknown; children?: unknown });
+      }
+      await this.identity(session);
+      return this.selections.prepare(session.path, nodes);
+    });
+  }
+
+  searchSelection(query: string) { return this.selections.search(query); }
+
   async close(workspace: string, leaseId: string) {
     const lease = this.leases.get(leaseId);
     if (!lease) return;
@@ -119,6 +148,7 @@ export class WatchManager {
   async dispose() {
     this.disposed = true;
     clearInterval(this.sweep);
+    this.selections.clear();
     this.leases.clear();
     await Promise.all([...this.sessions.values()].map((session) => this.stop(session)));
   }

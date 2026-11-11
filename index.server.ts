@@ -1,6 +1,6 @@
 import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin/server";
 import { realpath } from "node:fs/promises";
-import { commandInputRpc, commandStartRpc, commandStateRpc, commandStopRpc, officeSettings, previewRpc, statusRpc, watchOpenRpc, watchRequestRpc, watchEventsRpc, watchSaveRpc, watchCloseRpc } from "./shared/officecli";
+import { commandInputRpc, commandStartRpc, commandStateRpc, commandStopRpc, officeSettings, previewRpc, selectionPrepareRpc, selectionSearchRpc, statusRpc, watchOpenRpc, watchRequestRpc, watchEventsRpc, watchSaveRpc, watchCloseRpc } from "./shared/officecli";
 import { CommandRunner, renderDocument, resolveDocument, resolveExecutable } from "./server/officecli";
 import { InstallationInspector, requireInstallation } from "./server/installation";
 import { WatchManager } from "./server/watch";
@@ -66,6 +66,9 @@ export default function contribute(server: PluginServerContext) {
     if (status.capabilities.save.status === "missing") throw new Error(status.capabilities.save.diagnostic);
     return watches.save(workspaceId, await directory(workspaceId, paseo), leaseId);
   });
+  server.handle(selectionPrepareRpc, async ({ workspaceId, leaseId, paths }, { paseo }) =>
+    watches.prepareSelection(workspaceId, await directory(workspaceId, paseo), leaseId, paths));
+  server.handle(selectionSearchRpc, async ({ query }) => watches.searchSelection(query));
   server.handle(watchCloseRpc, async ({ workspaceId, leaseId }, { paseo }) => {
     await directory(workspaceId, paseo);
     await watches.close(workspaceId, leaseId);
