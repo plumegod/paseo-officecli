@@ -104,7 +104,7 @@ export const catalog = {
   referencing: ["Referencing", "引用中", "引用中", "参照中"],
   referenceSelection: ["Reference selected objects", "引用选中区域", "引用選取範圍", "選択オブジェクトを参照"],
   selectionLimit: ["Select at most {{count}} objects", "最多选择 {{count}} 个对象", "最多選取 {{count}} 個物件", "最大 {{count}} 個のオブジェクトを選択できます"],
-  selectFirst: ["Click a paragraph or object, then reference it.", "点击段落或对象后再引用。", "按一下段落或物件後再引用。", "段落またはオブジェクトをクリックしてから参照してください。"],
+  selectFirst: ["Select text, then click to send it to the conversation as a reference.", "选中文本，点击发送到对话框中引用", "選取文字，點擊傳送到對話框中引用", "テキストを選択し、クリックして会話に送信して参照してください。"],
   connectionUnavailable: ["Interactive connection unavailable; read-only preview and advanced commands remain available.", "交互连接不可用；只读预览和高级命令仍可使用。", "互動連線無法使用；唯讀預覽和進階命令仍可使用。", "対話型接続を利用できません。読み取り専用プレビューと詳細コマンドは使用できます。"],
   selectionTitle: ["Office selection · {{file}} · {{workspace}}", "Office 选区 · {{file}} · {{workspace}}", "Office 選取範圍 · {{file}} · {{workspace}}", "Office 選択範囲 · {{file}} · {{workspace}}"],
   selectionPicker: ["Add Office selection · {{file}}", "添加 Office 选区 · {{file}}", "新增 Office 選取範圍 · {{file}}", "Office 選択範囲を追加 · {{file}}"],
