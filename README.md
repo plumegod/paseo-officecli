@@ -27,6 +27,7 @@ Preview and work with Word, Excel, and PowerPoint files without leaving [Paseo](
 | --- | --- |
 | Paseo | **0.16.0-beta.1 or newer**, with trusted plugins enabled |
 | OfficeCLI | Official stable release **1.0.160 or newer**, installed on the daemon's machine |
+| Git | Available on the daemon's machine for the Git-source installation below |
 | Client | Paseo desktop or a modern browser; native mobile Office preview is not supported |
 
 OfficeCLI is installed and upgraded separately. This plugin does not bundle, fork, or pin its binary. Later stable versions depend on compatibility with the public CLI and watch interfaces; breaking upstream changes may require a plugin update.
@@ -40,13 +41,16 @@ OfficeCLI is installed and upgraded separately. This plugin does not bundle, for
    officecli --version
    ```
 
-2. Review this plugin's source and host permissions, then install it:
+2. Review this plugin's source and host permissions. On the target daemon, open **Paseo Settings → Plugins** and turn on **Enable plugins**, then run these commands on that machine:
 
    ```sh
    paseo plugin install https://github.com/plumegod/paseo-officecli.git
+   paseo plugin ls
    ```
 
-3. OfficeCLI is detected automatically. Only for a custom location, open **Paseo Settings → Plugins → paseo-officecli → OfficeCLI**, enter the executable's absolute path, and save. The plugin adds no sidebar workbench.
+   The plugin must report `running`. If it is missing or failed, check the target daemon and the global switch, then inspect `paseo plugin logs paseo-officecli`. This Git installation needs no `npm install` or separate build; Paseo supplies the runtime modules and compiles the source.
+
+3. Open **Paseo Settings → Plugins → paseo-officecli → OfficeCLI** and confirm the detected executable and version. Only for a custom location, enter the executable's absolute path and save. Detection uses the daemon account's environment, which can differ from your terminal's. The plugin adds no sidebar workbench.
 4. Open an Office file in the workspace tree, choose **OfficeCLI**, and select **Don't ask again** if you want to keep that choice. You can also set the default under **Settings → Files**. Other Office plugins do not need to be removed.
 
 To update the plugin:
@@ -115,7 +119,9 @@ npm run test:regression
 npm run test:integration
 ```
 
-The last two commands require an installed official OfficeCLI and fail if it is missing. Integration tests use temporary documents; the watch suite also exercises resident/save behavior and takes about two minutes. GitHub Actions runs typecheck and unit/policy/documentation tests on Windows for pushes and pull requests; it does **not** currently run OfficeCLI integration tests or a latest-version matrix.
+The last two commands require an installed official OfficeCLI and fail if it is missing. Integration tests use temporary documents; the watch suite also exercises resident/save behavior and takes about two minutes. GitHub Actions runs typecheck and unit/policy/documentation/package tests on Windows, macOS and Linux, then checks OfficeCLI integration against checksum-pinned **1.0.160** binaries. It tests the supported baseline, not arbitrary future versions.
+
+CI also installs the official `@getpaseo/cli@0.16.0-beta.1` into a temporary prefix and runs `npm run test:install`, with `PASEO_CLI_ENTRYPOINT` pointing to that package's `dist/index.js`. This installs the packed source with no plugin `node_modules`, verifies `running`, reloads, checks logs and removes the plugin in a separate loopback-only daemon. It never enables plugins on an existing daemon. `package.json` remains private: the supported release source is Git, not an unpublished npm package. Before sharing a revision, require all CI jobs to pass and test that exact Git revision on a test daemon.
 
 For local installation, remove an existing installation source with the same plugin ID first, then:
 

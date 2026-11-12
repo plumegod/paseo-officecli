@@ -70,7 +70,10 @@ test("wire errors localize codes and nested plugin diagnostics, never raw offici
     const expected = translate(locale, "cliFailed", { code: 7, detail: raw });
     assert.equal(displayMessage(locale, new Error(wire)), expected);
     assert.equal(displayMessage(locale, "Error: " + wire), expected);
-    assert.equal(displayMessage(locale, raw), raw);
+    const rpc = `Request failed: ${wire} requestType=plugin.rpc.invoke.request code=handler_error`;
+    assert.equal(displayMessage(locale, Object.assign(new Error(rpc), { name: "DaemonRpcError" })), expected);
+    assert.equal(displayMessage(locale, "DaemonRpcError: " + rpc), expected);
+    for (const literal of [raw, `stderr contains ${wire}`, `Request failed: ${wire} requestType=other code=handler_error`]) assert.equal(displayMessage(locale, literal), literal);
     const nestedError = message("versionUnknown", { detail: nested(message("versionFailed", { detail: raw })) });
     assert.equal(displayMessage(locale, nestedError), translate(locale, "versionUnknown", { detail: translate(locale, "versionFailed", { detail: raw }) }));
   }
@@ -106,10 +109,10 @@ test("the client adapter follows live host locale, overrides locally and observe
     "../shared/locales.ts": { normalizeLocale, resources, translate },
     "../shared/messages.ts": { displayMessage },
     "./language-store.ts": { createLanguageStore: () => store, LANGUAGE_STORAGE_KEY },
+    "./web.ts": { clientStorage: () => undefined, observeStorage(callback) { listener = callback; return () => { removed = true; }; } },
   };
   const exports = {};
-  const environment = { addEventListener(name, callback) { assert.equal(name, "storage"); listener = callback; }, removeEventListener(name, callback) { assert.equal(callback, listener); removed = true; } };
-  new Function("exports", "require", "globalThis", outputText)(exports, (name) => { assert.ok(name in mocks, name); return mocks[name]; }, environment);
+  new Function("exports", "require", outputText)(exports, (name) => { assert.ok(name in mocks, name); return mocks[name]; });
   const hook = exports.useOfficeTranslation;
   assert.equal(hook().t("save"), "Save");
   hostLocale = "ja"; assert.equal(hook().t("save"), "保存");

@@ -13,7 +13,8 @@ export function nested(value: string): string | WireMessage {
   return parsed ?? value;
 }
 function parse(value: string): WireMessage | null {
-  const clean = value.replace(/^(?:Error: )+/, "");
+  // Paseo's RPC error adds a prefix and metadata around the original plugin message.
+  const clean = value.replace(/^(?:Error: )+/, "").replace(/^(?:DaemonRpcError: )?Request failed: (OFFICECLI_MESSAGE:\{.*\}) requestType=plugin\.rpc\.invoke\.request code=handler_error$/s, "$1");
   if (!clean.startsWith(prefix)) return null;
   try {
     const result = JSON.parse(clean.slice(prefix.length));

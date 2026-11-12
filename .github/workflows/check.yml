@@ -5,9 +5,17 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   typecheck-and-test:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,8 +38,42 @@ jobs:
           }
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.18.0'
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm test
+      - name: Install checksum-pinned official OfficeCLI baseline
+        shell: pwsh
+        run: |
+          $platform = switch ($env:RUNNER_OS) { Windows { 'win' } macOS { 'mac' } Linux { 'linux' } default { throw 'Unsupported runner OS.' } }
+          $arch = node -p process.arch
+          if ($LASTEXITCODE -ne 0) { throw 'Could not detect runner architecture.' }
+          $asset = "officecli-$platform-$arch"
+          if ($env:RUNNER_OS -eq 'Windows') { $asset += '.exe' }
+          $hashes = @{
+            'officecli-win-x64.exe' = 'c590ca9d464f2b03362825b0f2615efcae33ce3fc0edaeeef29f7ddacb4c5424'
+            'officecli-win-arm64.exe' = '65129df43a4eb8199f3ebf6b17b56c5311242f53c5f725f60efb0a94f8952d74'
+            'officecli-mac-x64' = '55b27f6d422f9e0bcd2aa40abb262606110ff957a4a5253db7a8ba0460cd81c7'
+            'officecli-mac-arm64' = 'fe2b31c6c27534dfbbf155386b6b9105420f9315bbb606335ec61490d171386d'
+            'officecli-linux-x64' = 'baa084b64ec634bd9d41a0592db3ed85f11658b358bab898679537ea7f3e73a9'
+            'officecli-linux-arm64' = 'e8f06aff6c59f11a73a1a1218bda3ce170299201fd56bce6d62ecd4d0c024e53'
+          }
+          if (!$hashes.ContainsKey($asset)) { throw "Missing checksum for $asset" }
+          $binary = Join-Path $env:RUNNER_TEMP $asset
+          Invoke-WebRequest "https://github.com/iOfficeAI/OfficeCLI/releases/download/v1.0.160/$asset" -OutFile $binary
+          if ((Get-FileHash $binary -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hashes[$asset]) { throw 'OfficeCLI checksum mismatch.' }
+          if ($env:RUNNER_OS -ne 'Windows') {
+            chmod +x $binary
+            if ($LASTEXITCODE -ne 0) { throw 'Could not make OfficeCLI executable.' }
+          }
+          "OFFICECLI_PATH=$binary" >> $env:GITHUB_ENV
+      - name: Install official Paseo test host
+        shell: pwsh
+        run: |
+          $prefix = Join-Path $env:RUNNER_TEMP 'paseo-host'
+          npm install --prefix $prefix --no-audit --no-fund @getpaseo/cli@0.16.0-beta.1
+          if ($LASTEXITCODE -ne 0) { throw 'Could not install the official Paseo test host.' }
+          "PASEO_CLI_ENTRYPOINT=$(Join-Path $prefix 'node_modules/@getpaseo/cli/dist/index.js')" >> $env:GITHUB_ENV
+      - run: npm run test:install
+      - run: npm run test:integration

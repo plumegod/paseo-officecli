@@ -1,17 +1,25 @@
 # OfficeCLI
 
-在 Paseo 文件面板预览 `.docx`、`.xlsx`、`.pptx`，支持工作表切换、多页幻灯片与文件变更自动刷新。首次打开选择 **OfficeCLI**，勾选 **不再询问** 并点击 **使用**。默认仅显示只读预览，不需要配置命令。
+Preview `.docx`, `.xlsx` and `.pptx` in Paseo's file panel using the official OfficeCLI renderer. Switch worksheets, browse slides and refresh when the file changes. Word and PowerPoint initially open in Selection mode; Excel initially opens in Reading mode. The last mode is remembered per file type on this client. The plugin adds a file panel and a settings screen, not a sidebar workbench.
 
-可执行文件默认自动查找。只有自定义安装位置才需在 **Paseo 设置 → 插件 → paseo-officecli 的操作菜单 → OfficeCLI** 填写绝对路径；插件不增加常用侧边栏、独立工作台、新建标签页或命令中心入口。OfficeCLI 在主机独立安装、独立升级，插件不捆绑、锁定或分叉 OfficeCLI。
+## Setup
 
-最低支持 **OfficeCLI 1.0.160**；后续官方稳定版须保持所需公开接口兼容，破坏性变化可能需要插件适配。低于基线的版本请升级至官方稳定版，不承诺继续运行或长期维护旧版；低于基线时仅检测路径和版本，不运行 help 或文档命令。按 [官方安装说明](https://github.com/iOfficeAI/OfficeCLI#installation)在 daemon 所在机器手动升级，然后在上述设置中点击 **重新检测**，核对实际路径和版本；若路径不对，修改并保存后再次检测。插件不会后台安装或替换二进制，也不会为升级强制保存或关闭用户 resident。
+Requires Paseo **0.16.0-beta.1 or newer** with plugins enabled, and the official stable **OfficeCLI 1.0.160 or newer** on the daemon's machine. OfficeCLI provides Windows, macOS and Linux binaries; follow its [official installation instructions](https://github.com/iOfficeAI/OfficeCLI#installation). This plugin does not download, bundle, fork or update OfficeCLI. Native mobile Office previews are not supported; use Paseo desktop or a modern browser.
 
-Excel 点击 **交互编辑**，使用官方 watch 页面双击单元格编辑、拖动图表，直接修改当前原文件；Word/PPTX 当前只有 **实时预览/选择**，文本编辑请用高级命令。Word / PowerPoint 可点击对象后使用 **引用选中区域**，把对象快照挂到当前工作区的对话（需要 Paseo ≥ 0.16）；不是字符级划选，Excel 选区引用暂不支持。
+The executable is discovered automatically from the daemon's environment and the official per-user installation location. For a custom installation, save its absolute path under **Settings → Plugins → paseo-officecli → OfficeCLI**. Choose **OfficeCLI** when opening an Office file. Language and document-mode preferences are local to the client; the executable path is a daemon setting. After an OfficeCLI upgrade, use **Recheck** in plugin settings and reopen interactive pages. Later releases must remain compatible with the public CLI and watch interfaces; upstream breaking changes may require a plugin update.
 
-工具栏 **保存** 调用官方 save，不改自动保存策略、不关 resident；**重载** 重新打开官方页面。失败才显示错误，不自动重试。watch 只在 daemon 的 loopback 监听，浏览器通过受控 Paseo RPC 访问，不直连远程主机的 localhost；iframe 保持独立来源。相同文件共享自建 watch，关闭最后一个交互页时只停止插件自己的服务；断线租约会过期，不接管用户已有 watch。
+## Preview, editing and commands
 
-需要手动操作时，在文件内打开 **高级命令**。参数预填当前文件，按既有限制透传 JSON argv、标准输入和批处理；官方新增命令在公开接口兼容时也可直接使用，不使用 shell、不设白名单。标准输入按需展开；运行前弹窗确认实际程序、工作目录、参数与权限风险；运行时才显示停止，有任务后才显示结果。支持 stdout / stderr 切换、完整复制、退出码、stdin / EOF 与长任务状态。没有现成 Office 文件时可通过 Paseo 终端创建后再打开。
+Reading mode is a read-only HTML preview. Excel's Editing mode uses the official watch page for cell-text edits and chart dragging on the current original file. Word and PowerPoint Selection mode provides live preview and object selection, not in-place text editing. **Save** invokes OfficeCLI's save command. Leaving the page does not save or undo a change, and the plugin does not change the resident's autosave policy.
 
-高级命令以宿主账户执行，能修改工作区外文件、访问网络或更改全局配置，不是文件系统沙箱。请备份重要文件；非零退出、停止或超限终止不等于撤销，务必检查实际结果。batch 默认行为以当前官方文档、选项和实际执行结果为准，不能推广到其他命令。插件不自动保存或关闭用户 resident。预览在本机隔离框架中渲染，阻止外部资源加载；在线字体、公式库和 3D 资源不可用。文档外链仍能在框架内导航，请勿点击不可信链接。仅桌面/浏览器预览，不支持旧格式或原生手机客户端预览。
+For Word and PowerPoint, **Reference selected objects** prepares an attachment for the current workspace's conversation without sending a message. Snapshots include the document path and captured object content. They remain in plugin memory until eviction or unload and can reach your configured Agent Provider when you send the attachment. Review sensitive content before sending it.
 
-每工作区保留最近一条命令，最多 8 个工作区；命令无固定超时，文本输出共限 16 MiB，超限停止。每次 argv / stdin 最多 1 Mi 字符，stdin 队列最多 4 MiB。标准输入输出为 UTF-8，二进制导出请用官方文件输出参数。预览另限 60 秒 / 16 MiB。交互页最多 8 个文件、每请求 64 KiB，当前实测 OfficeCLI 1.0.160；不支持的 watch 协议明确报错，可回退预览/高级命令，不承诺未知未来上游接口永不变更。
+**Advanced commands** accepts JSON argv and optional stdin. It shows the executable, working directory, arguments and permissions for confirmation before execution, then exposes stdout, stderr, exit status and stop controls. Arguments are passed without a shell or a fixed command whitelist. New official commands work when the public interfaces remain compatible. Text output is UTF-8 and limited to 16 MiB; binary exports should use OfficeCLI's file-output arguments. See the [usage guide](docs/USAGE.md) for limits and lifecycle details.
+
+## Access and limitations
+
+Server code and commands run as the daemon's account, outside a filesystem sandbox. Advanced commands can access files outside the workspace, the network and global configuration. Back up important files: failure, stopping or hitting a limit does not undo changes. Preview and interactive document paths are checked against the real workspace boundary. A timed-out write may already have taken effect; inspect it before retrying.
+
+Official document HTML runs in an isolated iframe with only `allow-scripts`. External resources are blocked, including remote fonts, formula libraries and 3D resources. This is not a complete document-security sandbox or network firewall; do not follow untrusted document links. Rendering can differ from Microsoft Office. Legacy `.doc`, `.xls`, `.ppt` and encrypted documents are unsupported.
+
+The plugin's watch service listens only on the daemon's loopback interface. Clients access it through Paseo RPC rather than connecting to a remote machine's localhost. The same file shares a plugin-owned watch; closing the last interactive page stops only that watch. Disconnected leases expire. The plugin does not take over or close user-owned watch/resident services. It does not upload documents on its own; explicit commands and attachments can send data according to the command or your Agent Provider configuration.

@@ -2,7 +2,20 @@ import assert from "node:assert/strict";
 import { setImmediate as tick } from "node:timers/promises";
 import { test } from "node:test";
 import { searchPluginAttachments, PluginTranslationRuntime } from "@getpaseo/plugin/client/host";
-import { createSelectionSource } from "../client/selection.ts";
+import { readFileSync } from "node:fs";
+import ts from "typescript";
+import { selectionSearchRpc } from "../shared/officecli.ts";
+import { messages } from "./i18n-fixture.mjs";
+
+const source = readFileSync(new URL("../client/selection.ts", import.meta.url), "utf8");
+const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } });
+const exports = {};
+new Function("exports", "require", outputText)(exports, (name) => {
+  if (name === "./i18n.ts") return { messages };
+  assert.equal(name, "../shared/officecli.ts");
+  return { selectionSearchRpc };
+});
+const { createSelectionSource } = exports;
 
 const token = "22171133-fc27-4f17-84b6-0376e2cb9123";
 const item = { id: "att", identifier: "PPTX", title: "report.pptx", url: "file:///report.pptx", text: "snap", resourceType: "officecli-selection" };

@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Use the complete official OfficeCLI command line and Office file previews inside Paseo.",
   "license": "MIT",
+  "engines": { "node": ">=22.18.0" },
   "repository": {
     "type": "git",
     "url": "https://github.com/plumegod/paseo-officecli.git"
@@ -12,6 +13,7 @@
   "files": [
     "paseo-plugin.json",
     "AGENTS.md",
+    "assets/",
     "docs/",
     "README.*.md",
     "OVERVIEW.md",
@@ -27,6 +29,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs",
+    "test:install": "node --test tests/install.integration.mjs",
     "test:regression": "node --test tests/integration.mjs tests/commands.integration.mjs",
     "test:integration": "node --test tests/integration.mjs tests/commands.integration.mjs tests/watch.integration.mjs"
   },

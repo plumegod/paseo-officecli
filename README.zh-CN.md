@@ -27,6 +27,7 @@
 | --- | --- |
 | Paseo | **0.16.0-beta.1 或更新版本**，已启用 trusted plugins |
 | OfficeCLI | 官方稳定版 **1.0.160 或更新版本**，安装在 daemon 所在机器 |
+| Git | daemon 所在机器可执行 Git，用于下述 Git 源安装 |
 | 客户端 | Paseo 桌面端或现代浏览器；不支持原生手机客户端的 Office 预览 |
 
 OfficeCLI 独立安装、独立升级，本插件不捆绑、分叉或锁定其二进制。后续稳定版需要保持公开 CLI 与 watch 接口兼容；上游出现破坏性变更时，可能仍需更新插件。
@@ -40,13 +41,16 @@ OfficeCLI 独立安装、独立升级，本插件不捆绑、分叉或锁定其�
    officecli --version
    ```
 
-2. 审阅本插件源码和主机权限后安装：
+2. 审阅本插件源码和主机权限。在目标 daemon 的 **Paseo 设置 → 插件**中打开**启用插件**，然后在该机器上运行：
 
    ```sh
    paseo plugin install https://github.com/plumegod/paseo-officecli.git
+   paseo plugin ls
    ```
 
-3. 默认自动查找 OfficeCLI。只有自定义安装位置才需在 **Paseo 设置 → 插件 → paseo-officecli → OfficeCLI** 填写可执行文件绝对路径并保存。插件不增加侧边栏工作台。
+   插件必须显示为 `running`。未出现或失败时，先核对目标 daemon 和全局开关，再查看 `paseo plugin logs paseo-officecli`。此 Git 安装不需要 `npm install` 或单独构建，运行时模块和源码编译均由 Paseo 提供。
+
+3. 打开 **Paseo 设置 → 插件 → paseo-officecli → OfficeCLI**，确认检测到的程序路径和版本。只有自定义安装位置才需填写可执行文件绝对路径并保存。检测使用 daemon 账户的环境，可能与终端不同。插件不增加侧边栏工作台。
 4. 在工作区文件树打开 Office 文件，选择 **OfficeCLI**；如需记住选择，可勾选 **不再询问**。也可在 **设置 → 文件** 中指定默认打开方式，无需卸载其他 Office 插件。
 
 更新插件：
@@ -115,7 +119,9 @@ npm run test:regression
 npm run test:integration
 ```
 
-最后两条命令需要已安装的官方 OfficeCLI，找不到时会直接失败。集成测试使用临时文档；watch 测试还覆盖 resident／保存行为，约需两分钟。GitHub Actions 在 push 和 pull request 时于 Windows 执行类型检查及单元／规范／文档测试；**目前不会**执行 OfficeCLI 集成测试或最新版本矩阵。
+最后两条命令需要已安装的官方 OfficeCLI，找不到时会直接失败。集成测试使用临时文档；watch 测试还覆盖 resident／保存行为，约需两分钟。GitHub Actions 在 Windows、macOS 和 Linux 执行类型检查及单元／规范／文档／打包测试，再使用固定校验和的 **1.0.160** 二进制运行 OfficeCLI 集成测试。它验证受支持的基线，不承诺任意未来版本。
+
+CI 还会把官方 `@getpaseo/cli@0.16.0-beta.1` 安装到临时前缀，将 `PASEO_CLI_ENTRYPOINT` 指向其 `dist/index.js`，运行 `npm run test:install`。该测试在单独、仅监听 loopback 的 daemon 中安装不含插件 `node_modules` 的打包源码，验证 `running`、重载、检查日志并移除插件，不会为已有 daemon 开启插件。`package.json` 仍为 private：当前支持通过 Git 发布，而不是使用未发布的 npm 包。分享某个修订前，须要求全部 CI 作业通过，并在测试 daemon 上安装该确切 Git 修订验证。
 
 本地安装前，先移除已有的同 ID 插件安装源，然后运行：
 

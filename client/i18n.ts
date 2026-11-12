@@ -2,19 +2,13 @@ import { useSyncExternalStore } from "react";
 import { defineTranslations, useTranslation } from "@getpaseo/plugin/client";
 import { normalizeLocale, resources, translate } from "../shared/locales.ts";
 import { displayMessage } from "../shared/messages.ts";
-import { createLanguageStore, LANGUAGE_STORAGE_KEY, type LanguageStorage } from "./language-store.ts";
+import { createLanguageStore, LANGUAGE_STORAGE_KEY } from "./language-store.ts";
+import { clientStorage, observeStorage } from "./web.ts";
 
 export const messages = defineTranslations({ resources });
-const browser = globalThis as typeof globalThis & {
-  localStorage?: LanguageStorage;
-  addEventListener?: (name: string, listener: (event: { key: string | null }) => void) => void;
-  removeEventListener?: (name: string, listener: (event: { key: string | null }) => void) => void;
-};
-export const languageStore = createLanguageStore(() => browser.localStorage);
+export const languageStore = createLanguageStore(clientStorage);
 export function observeLanguageStorage() {
-  const listener = (event: { key: string | null }) => { if (event.key === LANGUAGE_STORAGE_KEY || event.key === null) languageStore.refresh(); };
-  browser.addEventListener?.("storage", listener);
-  return () => browser.removeEventListener?.("storage", listener);
+  return observeStorage((event) => { if (event.key === LANGUAGE_STORAGE_KEY || event.key === null) languageStore.refresh(); });
 }
 export function useOfficeTranslation() {
   const host = useTranslation(messages); // Public SDK subscribes to the effective Paseo locale.

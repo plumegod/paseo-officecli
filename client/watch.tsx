@@ -4,19 +4,12 @@ import { useRpc, type PluginFilePanelProps } from "@getpaseo/plugin/client";
 import { Loading } from "@getpaseo/plugin/client/ui";
 import { selectionPrepareRpc, watchCloseRpc, watchEventsRpc, watchOpenRpc, watchRequestRpc, watchSaveRpc } from "../shared/officecli";
 import { bridgeMessage, MAX_SELECTION_PATHS, selectionUpdate, watchRequest, type WatchState } from "../shared/watch";
-import { createPreviewUrl, PreviewFrame, revokePreviewUrl, type FrameHandle, type FrameWindow } from "./web";
+import { createFrameChannel, createPreviewUrl, observeFrameMessages, PreviewFrame, revokePreviewUrl, type FrameHandle, type FrameMessage } from "./web";
 import { watchBridge } from "./watch-bridge";
 import { ActionButton } from "./controls";
 import type { createSelectionSource } from "./selection";
 import { useOfficeTranslation } from "./i18n";
 import { message } from "../shared/messages";
-
-interface FrameMessage { source: FrameWindow | null; data: unknown }
-declare const window: {
-  crypto: { randomUUID(): string };
-  addEventListener(type: "message", listener: (event: FrameMessage) => void): void;
-  removeEventListener(type: "message", listener: (event: FrameMessage) => void): void;
-};
 
 export type WatchChrome = { save(): void; reload(): void; label: string; disabled: boolean; error: string | null };
 
@@ -47,7 +40,7 @@ export function WatchEditor({ workspaceId, file, theme, onChrome, beginSelection
   const [preparing, setPreparing] = useState(false);
   useEffect(() => {
     let alive = true, leaseId: string | null = null, blob: string | null = null, cursor = 0, inflight = 0, refreshing = false;
-    const channel = window.crypto.randomUUID();
+    const channel = createFrameChannel();
     channelRef.current = channel;
     setUrl(null); setState(null); setError(null); setFatal(false); setBusy(0); setSaving(false);
     setSelection([]); setSelecting(0); setPreparing(false);
@@ -112,7 +105,7 @@ export function WatchEditor({ workspaceId, file, theme, onChrome, beginSelection
         if (alive && selectionRequest) setSelecting((count) => count - 1);
       }
     };
-    window.addEventListener("message", receive);
+    const stopMessages = observeFrameMessages(receive);
     void closing.current.then(() => api.current.open({ workspaceId, path: file.path })).then(async (opened) => {
       leaseId = opened.leaseId;
       if (!alive) { await api.current.close({ workspaceId, leaseId }); return; }
@@ -120,7 +113,7 @@ export function WatchEditor({ workspaceId, file, theme, onChrome, beginSelection
     }).catch((failure) => { if (alive) { setError(String(failure)); setFatal(true); } });
     return () => {
       alive = false; session.current = null; channelRef.current = null;
-      window.removeEventListener("message", receive);
+      stopMessages();
       if (blob) revokePreviewUrl(blob);
       if (leaseId) closing.current = api.current.close({ workspaceId, leaseId }).catch(() => {}); // Lease expiry also cleans up a disconnected client.
     };
@@ -169,7 +162,7 @@ export function WatchEditor({ workspaceId, file, theme, onChrome, beginSelection
       </View>
     </View>}
     {fatal ? <Text style={{ padding: 20, color: colors.foregroundMuted }}>{t("connectionUnavailable")}</Text>
-      : url ? <PreviewFrame url={url} name={file.name} frameRef={frame} onLoad={() => {
+      : url ? <PreviewFrame url={url} title={t("frameTitle", { name: file.name })} frameRef={frame} onLoad={() => {
         localizeBridge();
         // OfficeCLI sometimes requests location.reload(); a Blob reload alone would serve stale HTML.
         if (lastLoaded.current === url) reload.current();

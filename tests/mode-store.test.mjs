@@ -83,14 +83,10 @@ test("the client hook shares one store and observes only mode storage changes, w
   const mocks = {
     react: { useSyncExternalStore: (_, get) => get() },
     "./mode-store.ts": { createModeStore, MODE_STORAGE_KEYS },
-  };
-  const environment = {
-    localStorage: disk,
-    addEventListener(name, callback) { assert.equal(name, "storage"); listener = callback; },
-    removeEventListener(name, callback) { assert.equal(name, "storage"); assert.equal(callback, listener); removed = true; },
+    "./web.ts": { clientStorage: () => disk, observeStorage(callback) { listener = callback; return () => { removed = true; }; } },
   };
   const exports = {};
-  new Function("exports", "require", "globalThis", outputText)(exports, (name) => { assert.ok(name in mocks, name); return mocks[name]; }, environment);
+  new Function("exports", "require", outputText)(exports, (name) => { assert.ok(name in mocks, name); return mocks[name]; });
   const stop = exports.observeModeStorage();
   let refreshed = 0;
   const refresh = exports.modeStore.refresh;

@@ -18,13 +18,7 @@ test("watch UI tracks validated selection events and quotes the selection", asyn
   const leaseId = "a1457133-fc27-4f17-84b6-0376e2cb9123";
   const token = "22171133-fc27-4f17-84b6-0376e2cb9123";
   const state = { revision: 0, savedRevision: null, lastWrite: "none" };
-  const previousWindow = globalThis.window;
   let listener;
-  globalThis.window = {
-    crypto: { randomUUID: () => channel },
-    addEventListener: (_, fn) => { listener = fn; },
-    removeEventListener: () => { listener = null; },
-  };
   const slots = [], effects = [], cleanups = [], calls = [], published = [];
   let cursor = 0, nextEvents = [], prepareFailure = false, locale = "zh-CN";
   const lifecycle = [];
@@ -54,7 +48,7 @@ test("watch UI tracks validated selection events and quotes the selection", asyn
     "@getpaseo/plugin/client/ui": { Loading: "Loading" },
     "../shared/officecli": { watchOpenRpc: "open", watchRequestRpc: "request", watchEventsRpc: "events", watchCloseRpc: "close", watchSaveRpc: "save", selectionPrepareRpc: "prepare" },
     "../shared/watch": { bridgeMessage, MAX_SELECTION_PATHS, selectionUpdate, watchRequest },
-    "./web": { createPreviewUrl: () => "blob:preview", revokePreviewUrl() {}, PreviewFrame: "PreviewFrame" },
+    "./web": { createFrameChannel: () => channel, observeFrameMessages(fn) { listener = fn; return () => { listener = null; }; }, createPreviewUrl: () => "blob:preview", revokePreviewUrl() {}, PreviewFrame: "PreviewFrame" },
     "./watch-bridge": { watchBridge: () => "bridge" },
     "./controls": { ActionButton: "ActionButton" },
     "./i18n": { useOfficeTranslation: () => translations(locale) },
@@ -69,7 +63,7 @@ test("watch UI tracks validated selection events and quotes the selection", asyn
   const button = (tree, label) => tree.find((node) => node.type === "ActionButton" && node.props.label === label);
   let tree = render();
   for (const effect of effects.splice(0)) { const cleanup = effect(); if (cleanup) cleanups.push(cleanup); }
-  t.after(() => { cleanups.forEach((cleanup) => cleanup()); globalThis.window = previousWindow; });
+  t.after(() => { cleanups.forEach((cleanup) => cleanup()); });
   await tick();
   tree = render();
   const bridgeUpdates = [];

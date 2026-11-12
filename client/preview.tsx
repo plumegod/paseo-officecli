@@ -71,7 +71,7 @@ export function OfficePreview({ workspaceId, file, revision, theme, layout, begi
         : blocked ? <Text accessibilityRole="alert" selectable style={{ padding: 20, color: colors.statusDanger }}>{display(diagnostic)}</Text>
         : mode === "watch" ? <WatchEditor key={`${workspaceId}:${file.path}`} workspaceId={workspaceId} file={file} theme={theme} onChrome={setChrome} beginSelection={beginSelection} />
         : preview.isError ? <Text accessibilityRole="alert" selectable style={{ padding: 20, color: colors.statusDanger }}>{display(preview.error)}</Text>
-          : url ? <PreviewFrame url={url} name={file.name} /> : <Loading />}
+          : url ? <PreviewFrame url={url} title={t("frameTitle", { name: file.name })} /> : <Loading />}
     </View>
   );
 }
