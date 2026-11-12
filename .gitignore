@@ -1,5 +1,11 @@
 node_modules/
 .paseo/
 artifacts/
+coverage/
 *.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
 .DS_Store
+Thumbs.db
