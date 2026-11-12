@@ -10,6 +10,24 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require README translations together
+        if: >-
+          github.event_name == 'pull_request' ||
+          (github.event_name == 'push' &&
+          github.event.before != '0000000000000000000000000000000000000000')
+        shell: pwsh
+        env:
+          BASE_SHA: >-
+            ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          $readmes = @('README.md', 'README.zh-CN.md', 'README.ja.md')
+          $changed = @(git diff --name-only $env:BASE_SHA HEAD -- $readmes)
+          if ($LASTEXITCODE -ne 0) { throw 'Could not compare README changes.' }
+          if ($changed.Count -gt 0 -and $changed.Count -ne $readmes.Count) {
+            throw 'Update README.md, README.zh-CN.md and README.ja.md together.'
+          }
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
