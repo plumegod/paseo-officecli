@@ -80,6 +80,10 @@ For cross-document reconstruction, use `["dump", "source.docx", "/body"]`, copy 
 
 ## Official interactive pages
 
+Word and PowerPoint first open in **Selection mode**; Excel first opens in **Reading mode**. Use the file toolbar to switch to **Reading mode**, **Selection mode** (Word/PowerPoint), or **Editing mode** (Excel). **OfficeCLI → Document modes** in plugin settings edits the same preference. The last mode is saved separately for `.docx`, `.pptx`, and `.xlsx` in this client's plugin-local Web Storage, shared by its panels and restored after reopening or restarting. It is not a per-file, workspace, daemon, or Paseo-global setting. If storage is unavailable, the current choice remains usable in memory and a translated persistence warning is shown. Invalid saved values use the first-open defaults.
+
+Advanced commands are a temporary view: **Back to document** returns to the selected document mode without saving commands as a mode. Switching modes neither saves nor undoes edits. This plugin uses only OfficeCLI's existing format/selection capabilities; it does not add a PDF renderer, OCR, or Excel selection attachments.
+
 The plugin embeds official `watch <file> --port 0` HTML and scripts. It does not implement a replacement spreadsheet or a simulated editable page. Interactive behavior has been exercised with **OfficeCLI 1.0.160**; later versions require compatible public protocols.
 
 | Format | Supported interaction |
@@ -91,7 +95,7 @@ The plugin embeds official `watch <file> --port 0` HTML and scripts. It does not
 
 OfficeCLI resident behavior, including `OFFICECLI_RESIDENT_FLUSH`, is unchanged. Opening an interactive page does not prove existing resident edits are on disk. Leaving it neither saves nor undoes changes. Save important edits explicitly; the plugin does not automatically close user residents.
 
-Command completion invalidates workspace preview caches. Return to preview or refresh to read current resident content, including edits not yet written to disk. Disk writes also trigger refresh. Official resident idle-saving behavior remains upstream's responsibility.
+Command completion invalidates workspace preview caches. Switch to **Reading mode** or refresh to read current resident content, including edits not yet written to disk. Disk writes also trigger refresh. Official resident idle-saving behavior remains upstream's responsibility.
 
 ### Selection attachments
 

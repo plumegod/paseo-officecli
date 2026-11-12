@@ -7,9 +7,12 @@ import { officeSettings, statusRpc } from "../shared/officecli";
 import { useOfficeTranslation } from "./i18n";
 import { languageNames } from "./language-store";
 import { locales } from "../shared/locales";
+import { documentTypes } from "./mode-store";
+import { useDocumentModes } from "./modes";
 
 export function OfficeSettings({ theme, layout }: PluginSurfaceProps) {
   const { t, display, selected, setLanguage, storageError } = useOfficeTranslation();
+  const { modes, setMode, storageError: modeStorageError } = useDocumentModes();
   const settings = useSettings(officeSettings);
   const status = useRpc(statusRpc);
   const check = useQuery({ queryKey: ["officecli.status"], queryFn: () => status({ refresh: true }), retry: false });
@@ -31,6 +34,14 @@ export function OfficeSettings({ theme, layout }: PluginSurfaceProps) {
             <SettingsSelect label={t("language")} hint={t("languageScope")} error={storageError ? t("storageUnavailable") : null}
               value={selected} onValueChange={setLanguage}
               options={[{ value: "follow", label: t("follow") }, ...locales.map((locale) => ({ value: locale, label: languageNames[locale] }))]} />
+          </SettingsCard>
+        </SettingsSection>
+        <SettingsSection title={t("documentModes")}>
+          <SettingsCard>
+            {documentTypes.map((type) => <SettingsSelect key={type} label={t(type === "docx" ? "wordMode" : type === "pptx" ? "presentationMode" : "spreadsheetMode")}
+              hint={t("modeScope")} error={modeStorageError ? t("modeStorageUnavailable") : null}
+              value={modes[type]} onValueChange={(value) => setMode(type, value)}
+              options={(type === "xlsx" ? ["preview", "watch"] : ["watch", "preview"]).map((value) => ({ value, label: value === "preview" ? t("readingMode") : type === "xlsx" ? t("editingMode") : t("selectionMode") }))} />)}
           </SettingsCard>
         </SettingsSection>
         <SettingsSection title={t("program")}>

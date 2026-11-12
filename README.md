@@ -62,7 +62,7 @@ This updates only the plugin. Upgrade OfficeCLI using its official instructions,
 
 ### Preview and interactive pages
 
-Opening a file starts with a **read-only preview**. Choose **Interactive editing** for Excel, or **Live preview / selection** for Word and PowerPoint. The interactive page uses OfficeCLI's own watch service and can modify the current original file.
+Word and PowerPoint initially open in **Selection mode**; switch directly to **Reading mode** for read-only preview. Excel initially opens in **Reading mode**, with **Editing mode** available. The last choice is remembered separately for each file type on this client, including after reopening or restarting. Change it in the file toolbar or under **OfficeCLI → Document modes** in plugin settings. Interactive modes use OfficeCLI's own watch service and allow supported changes to the current original file.
 
 Use **Save** to invoke the official save command; leaving the page is not a save or an undo. For Word and PowerPoint, select an object and choose **Reference selected objects** to prepare a conversation attachment. Snapshots include file paths and object content: review them before sending sensitive data to an AI.
 

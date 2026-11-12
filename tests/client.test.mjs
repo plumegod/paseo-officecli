@@ -5,6 +5,7 @@ import ts from "typescript";
 import { MAX_INPUT_CHARS, parseArguments } from "../shared/commands.ts";
 import { messages, translations } from "./i18n-fixture.mjs";
 import { languageNames, locales } from "../shared/locales.ts";
+import { createModeStore, documentType, documentTypes } from "../client/mode-store.ts";
 
 function load(path, mocks) {
   const source = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -49,6 +50,7 @@ function surface(path) {
     statusQuery: { data: installation(), isPending: false, isError: false, async refetch() { return { data: this.data }; } },
     queries: new Map(), mutations: [],
     settings: { status: "ready", values: { executable: "" }, revision: 1, saving: false },
+    modeStore: createModeStore(() => ({ getItem: () => null, setItem() {} })),
   };
   const jsx = (type, props) => ({ type, props });
   const component = load(path, {
@@ -67,6 +69,8 @@ function surface(path) {
     "./controls": { ActionButton: "ActionButton", Disclosure: "Disclosure" },
     "./i18n": { useOfficeTranslation: () => translations(h.locale) },
     "./language-store": { languageNames },
+    "./mode-store": { documentType, documentTypes },
+    "./modes": { useDocumentModes: () => ({ modes: h.modeStore.getSnapshot(), storageError: h.modeStore.getError(), setMode: h.modeStore.set }) },
     "../shared/locales": { locales },
     "./commands": { CommandConsole: "CommandConsole" },
     "./watch": { WatchEditor: "WatchEditor" },
@@ -87,6 +91,7 @@ test("navigation registers the file panel and settings, and cleans up prepared s
     "./client/selection": { createSelectionSource: () => selections },
     "./client/settings": { OfficeSettings: "Settings" },
     "./client/i18n": { messages, observeLanguageStorage: () => () => {} },
+    "./client/modes": { observeModeStorage: () => () => disposed.push("modeStorage") },
   });
   const registrations = [];
   const client = Object.fromEntries(["addFilePanel", "addSettingsScreen"].map((name) => [name, (value) => {
@@ -96,8 +101,9 @@ test("navigation registers the file panel and settings, and cleans up prepared s
   const cleanup = contribute(client);
   assert.deepEqual(registrations.map(({ name, id }) => [name, id]), [["addFilePanel", "officecli"], ["addSettingsScreen", "officecli"]]);
   assert.equal(registrations[0].Component({}).props.beginSelection, selections.begin);
+  assert.deepEqual(registrations[0].files.extensions, ["docx", "xlsx", "pptx"], "no unsupported PDF entry is added");
   cleanup();
-  assert.deepEqual(disposed, ["addFilePanel", "addSettingsScreen", "selection"]);
+  assert.deepEqual(disposed, ["addFilePanel", "addSettingsScreen", "selection", "modeStorage"]);
 });
 
 test("file preview preserves watch editing alongside advanced commands", () => {
@@ -106,8 +112,14 @@ test("file preview preserves watch editing alongside advanced commands", () => {
     const file = { path: `/work/test.${extension}`, name: `test.${extension}` };
     const render = () => h.render({ file });
     let tree = render();
-    assert.equal(tree.some((node) => node.type === "WatchEditor" || node.type === "CommandConsole"), false);
-    const interact = button(tree, extension === "xlsx" ? "交互编辑" : "实时预览/选择");
+    assert.equal(tree.some((node) => node.type === "WatchEditor"), extension !== "xlsx");
+    assert.equal(h.queries.get("officecli.preview").enabled, extension === "xlsx");
+    if (extension !== "xlsx") {
+      button(tree, "阅读模式").props.onPress();
+      tree = render();
+      assert.equal(tree.some((node) => node.type === "WatchEditor"), false);
+    }
+    const interact = button(tree, extension === "xlsx" ? "编辑模式" : "选择模式");
     assert.match(interact.props.hint, extension === "xlsx" ? /双击/ : /不能原位编辑文本/);
     interact.props.onPress();
     tree = render();
@@ -135,11 +147,86 @@ test("file preview preserves watch editing alongside advanced commands", () => {
     const console = tree.find((node) => node.type === "CommandConsole");
     assert.equal(console.props.path, file.path);
     assert.equal(console.props.layout, props.layout);
-    button(tree, "返回预览").props.onPress();
+    assert.equal(button(tree, "保存"), undefined, "watch controls do not leak into advanced commands");
+    assert.equal(h.modeStore.getSnapshot()[extension], "watch", "commands never replace the saved mode");
+    button(tree, "返回文档").props.onPress();
+    tree = render();
+    assert.ok(tree.some((node) => node.type === "WatchEditor"));
+    button(tree, "阅读模式").props.onPress();
     tree = render();
     assert.ok(button(tree, "刷新预览"));
     assert.equal(tree.some((node) => node.type === "WatchEditor" || node.type === "CommandConsole"), false);
+    button(tree, "高级命令").props.onPress();
+    button(render(), "返回文档").props.onPress();
+    assert.ok(button(render(), "刷新预览"), "commands return to reading when entered from reading");
   }
+});
+
+test("settings and file panels share per-type preferences without inventing Excel selection or PDF support", () => {
+  const settings = surface("client/settings.tsx");
+  settings.query.data = installation();
+  const preview = surface("client/preview.tsx");
+  preview.modeStore = settings.modeStore;
+  const file = { path: "/work/one.docx", name: "one.docx" };
+  const select = (type) => settings.render().find((node) => node.type === "SettingsSelect" && node.props.label.includes(`.${type}`));
+  assert.equal(select("docx").props.value, "watch");
+  assert.equal(select("pptx").props.value, "watch");
+  assert.equal(select("xlsx").props.value, "preview");
+  assert.deepEqual(select("xlsx").props.options.map((option) => option.label), ["阅读模式", "编辑模式"]);
+  assert.deepEqual(select("docx").props.options.map((option) => option.label), ["选择模式", "阅读模式"]);
+  assert.equal(settings.render().filter((node) => node.type === "SettingsSelect").length, 4);
+  select("docx").props.onValueChange("preview");
+  assert.ok(button(preview.render({ file }), "选择模式"));
+  button(preview.render({ file }), "选择模式").props.onPress();
+  assert.equal(select("docx").props.value, "watch");
+  assert.equal(select("xlsx").props.value, "preview");
+  button(preview.render({ file }), "阅读模式").props.onPress();
+  assert.ok(button(preview.render({ file: { path: "/other/two.docx" } }), "选择模式"));
+  assert.ok(preview.render({ file: { path: "/other/two.pptx" } }).some((node) => node.type === "WatchEditor"));
+  assert.deepEqual(settings.calls, [], "mode settings do not save daemon settings or call OfficeCLI");
+});
+
+test("default selection never starts a watch before installation is ready and compatible", () => {
+  for (const scenario of ["old", "unknown", "pending", "error"]) {
+    const h = surface("client/preview.tsx");
+    if (scenario === "old") h.statusQuery.data.compatibility = "upgrade-required";
+    if (scenario === "unknown") h.statusQuery.data.compatibility = "unknown";
+    if (scenario === "pending") { h.statusQuery.isPending = true; h.statusQuery.data = undefined; }
+    if (scenario === "error") { h.statusQuery.isError = true; h.statusQuery.error = new Error("offline"); }
+    const tree = h.render({ file: { path: "/work/test.docx" } });
+    assert.equal(tree.some((node) => node.type === "WatchEditor"), false, scenario);
+    assert.equal(h.queries.get("officecli.preview").enabled, false);
+    assert.ok(button(tree, "阅读模式"), "read-only mode stays reachable for diagnosis");
+    assert.ok(button(tree, "高级命令"));
+  }
+  const h = surface("client/preview.tsx");
+  h.statusQuery.data.capabilities.htmlPreview.status = "missing";
+  assert.ok(h.render({ file: { path: "/work/test.docx" } }).some((node) => node.type === "WatchEditor"), "view-html support is not a requirement for watch");
+});
+
+test("mode errors stay localized and usable, and language changes preserve the selected mode", () => {
+  const h = surface("client/preview.tsx");
+  h.modeStore = createModeStore(() => undefined);
+  const file = { path: "/work/test.docx" };
+  button(h.render({ file }), "阅读模式").props.onPress();
+  const before = h.modeStore.getSnapshot();
+  let changes = 0;
+  h.modeStore.subscribe(() => changes++);
+  for (const locale of locales) {
+    h.locale = locale;
+    const tree = h.render({ file });
+    assert.equal(h.modeStore.getSnapshot(), before);
+    assert.ok(button(tree, translations(locale).t("selectionMode")));
+    assert.ok(tree.some((node) => node.props?.accessibilityRole === "alert" && node.props.children === translations(locale).t("modeStorageUnavailable")));
+    assert.deepEqual(h.queries.get("officecli.preview").queryKey, ["officecli.preview", "workspace", file.path, undefined]);
+  }
+  assert.equal(changes, 0);
+  const settings = surface("client/settings.tsx");
+  settings.query.data = installation(); settings.modeStore = h.modeStore;
+  const selectors = settings.render().filter((node) => node.type === "SettingsSelect" && node.props.label.includes(".docx"));
+  assert.equal(selectors[0].props.value, "preview");
+  assert.equal(selectors[0].props.error, translations("zh-CN").t("modeStorageUnavailable"));
+  assert.deepEqual(h.calls, []);
 });
 
 test("action buttons preserve accessibility hints", () => {
@@ -311,6 +398,7 @@ test("preview blocks old or unknown versions and missing HTML, but not unknown h
   for (const scenario of ["old", "version-unknown", "html-missing", "help-unknown"]) {
     const h = surface("client/preview.tsx");
     const status = h.statusQuery.data;
+    h.modeStore.set("docx", "preview");
     const file = { path: "/work/test.docx", name: "test.docx" };
     if (scenario === "old") { status.compatibility = "upgrade-required"; status.diagnostic = "需要升级 1.0.160"; }
     if (scenario === "version-unknown") { status.compatibility = "unknown"; status.diagnostic = "无法识别版本"; }
@@ -318,7 +406,7 @@ test("preview blocks old or unknown versions and missing HTML, but not unknown h
     const tree = h.render({ file });
     assert.equal(h.queries.get("officecli.preview").enabled, scenario === "help-unknown");
     assert.equal(button(tree, "高级命令").props.disabled, undefined);
-    assert.equal(button(tree, "实时预览/选择").props.disabled, ["old", "version-unknown"].includes(scenario));
+    assert.equal(button(tree, "选择模式").props.disabled, ["old", "version-unknown"].includes(scenario));
     assert.ok(tree.some((node) => node.props?.accessibilityRole === "alert"));
     if (scenario === "old") assert.ok(tree.find((node) => node.type === "ExternalLink"));
   }
@@ -327,6 +415,7 @@ test("preview blocks old or unknown versions and missing HTML, but not unknown h
 test("preview manual refresh re-detects capabilities before requesting HTML", () => {
   const h = surface("client/preview.tsx");
   let renders = 0;
+  h.modeStore.set("docx", "preview");
   h.query.refetch = () => { renders++; };
   const tree = h.render({ file: { path: "/work/test.docx" } });
   h.queries.get("officecli.status").queryFn();

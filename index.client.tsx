@@ -3,6 +3,7 @@ import { OfficePreview } from "./client/preview";
 import { createSelectionSource } from "./client/selection";
 import { OfficeSettings } from "./client/settings";
 import { messages, observeLanguageStorage } from "./client/i18n";
+import { observeModeStorage } from "./client/modes";
 
 export default function contribute(client: PluginClientContext) {
   const selections = createSelectionSource(client);
@@ -11,6 +12,7 @@ export default function contribute(client: PluginClientContext) {
     client.addSettingsScreen({ id: "officecli", title: messages.message("brand"), icon: "FileText", Component: OfficeSettings }),
     selections.clear,
     observeLanguageStorage(),
+    observeModeStorage(),
   ];
   return () => { for (const stop of cleanup) stop(); };
 }
