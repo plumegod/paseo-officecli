@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -34,7 +34,7 @@ test("argv is an exact JSON string array, never shell syntax", () => {
 
 test("runner preserves argv, cwd, stdin, stdout, stderr and exit code", async (t) => {
   const runner = runnerFor(t);
-  const cwd = await mkdtemp(join(tmpdir(), "paseo-command-"));
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), "paseo-command-")));
   t.after(() => rm(cwd, { recursive: true, force: true }));
   const args = ["中文 with spaces", "; echo injected", 'a"b', "$(whoami)"];
   node(runner, cwd, 'let input="";process.stdin.setEncoding("utf8");process.stdin.on("data",s=>input+=s);process.stdin.on("end",()=>{console.log(JSON.stringify({cwd:process.cwd(),args:process.argv.slice(1),input}));console.error("diagnostic");});', args, "批处理\n{}\n");
