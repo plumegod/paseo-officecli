@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 
 const root = new URL("../", import.meta.url);
-const names = ["README.md", "README.zh-CN.md", "README.ja.md"];
+const names = ["README.md", "README.zh-CN.md"];
 const readmes = names.map((name) => readFileSync(new URL(name, root), "utf8"));
 const manifest = JSON.parse(readFileSync(new URL("paseo-plugin.json", root), "utf8"));
 const anchors = (text) => [...text.matchAll(/<a id="([^"]+)"><\/a>/g)].map((match) => match[1]);
@@ -20,7 +20,7 @@ function assertAligned(baseline, translated) {
   assert.deepEqual(versions(translated), versions(baseline), "README versions must match");
 }
 
-test("English README and both translations share structure, links, commands and versions", () => {
+test("English README and translation share structure, links, commands and versions", () => {
   assert.deepEqual(anchors(readmes[0]), [
     "features", "requirements", "installation", "usage", "language", "safety", "development", "license",
   ]);
@@ -31,6 +31,17 @@ test("English README and both translations share structure, links, commands and 
     for (const name of names) assert.ok(links(text).includes(name), `Missing language switch: ${name}`);
     assert.equal((text.match(/^## /gm) || []).length, anchors(text).length);
     assert.equal((text.match(/^### /gm) || []).length, (readmes[0].match(/^### /gm) || []).length);
+  }
+});
+
+test("installation uses Paseo's npm source without Git requirements or checkout commands", () => {
+  const pkg = JSON.parse(readFileSync(new URL("package.json", root), "utf8"));
+  for (const text of readmes) {
+    const requirements = text.split('<a id="requirements"></a>')[1].split('<a id="installation"></a>')[0];
+    const installation = text.split('<a id="installation"></a>')[1].split('<a id="usage"></a>')[0];
+    assert.doesNotMatch(requirements, /\bGit\b/i);
+    assert.ok(installation.includes(`paseo plugin add npm:${pkg.name}`));
+    assert.doesNotMatch(installation, /paseo plugin (?:add|install) (?!npm:)|\bgit (?:clone|pull|checkout)\b|\bnpm (?:install|ci)\b/i);
   }
 });
 

@@ -1,11 +1,19 @@
 # Project rules
 
+## npm releases require per-release authorization
+
+- The default delivery for an explicitly authorized release is one new public npm package, not a Git-source installation. Ordinary edits, commits and pushes do not authorize publication; each release needs fresh user permission.
+- Unless the user specifies a version, increment the patch version in `package.json` and `package-lock.json`. Run typecheck, unit/policy tests, the official Paseo installation test and OfficeCLI integration tests before release. Commit all changes the user asked to include before packing.
+- Pack the committed version once with `npm pack --ignore-scripts --pack-destination artifacts/releases --json` after creating that ignored directory. Inspect its contents, then publish that exact `.tgz` using `npm publish <tarball> --access public --registry=https://registry.npmjs.org/`. Do not rebuild a different artifact for publication or commit generated packages/logs.
+- Verify the public version and artifact integrity, then verify installation through Paseo's official `npm:` source without Git. A dry run, upload acknowledgement or staged placeholder is not a published release. Inspect registry state before retrying an uncertain publication; never silently bump and publish another version under the same authorization.
+- Let the user complete npm/browser security challenges themselves. Never request passwords, OTPs or tokens in chat, weaken account security, or claim completion before public availability and installation are confirmed.
+
 ## README translations are one change
 
-- `README.md` is the English baseline. `README.zh-CN.md` and `README.ja.md` are complete Simplified Chinese and Japanese counterparts, not summaries.
-- A user request to edit any README applies to all three. Update the English baseline and both translations in the same patch without asking for separate translation requests. Do not finish with a stale language file or a placeholder translation.
+- `README.md` is the English baseline. `README.zh-CN.md` is the complete Simplified Chinese counterpart, not a summary.
+- A user request to edit any README applies to both. Update the English baseline and the Chinese translation in the same patch without asking for separate translation requests. Do not finish with a stale language file or a placeholder translation.
 - Keep language-switch links, section anchors/order, requirements, commands, links, feature claims, and safety boundaries aligned. Use the actual UI labels from `shared/locales.ts` when documenting controls. Shared technical examples stay verbatim; prose must be translated faithfully.
-- Run `npm test` after changes. Documentation tests check shared anchors, links, versions, and fenced examples; CI also requires all three README files in any README-changing patch. These checks cannot prove translation meaning: review all three before declaring completion. Do not change unrelated text just to satisfy a file-count check.
+- Run `npm test` after changes. Documentation tests check shared anchors, links, versions, and fenced examples; CI also requires both README files in any README-changing patch. These checks cannot prove translation meaning: review both before declaring completion. Do not change unrelated text just to satisfy a file-count check.
 - Keep the README focused on installation and use. Detailed operational limits belong in `docs/USAGE.md`; runtime translation policy belongs in `docs/I18N.md`. Do not add local logs, machine-specific screenshots, acceptance transcripts, credentials, or generated test output to Git. Keep test fixtures used by the suites.
 
 ## Internationalization is mandatory (Issue #8)

@@ -2,7 +2,11 @@
   "id": "paseo-officecli",
   "name": "OfficeCLI",
   "description": "Preview Office files, edit Excel and run the official OfficeCLI inside Paseo.",
-  "media": ["assets/officecli-preview.png"],
+  "media": [
+    "assets/preview-powerpoint.png",
+    "assets/preview-word.png",
+    "assets/preview-excel.png"
+  ],
   "requirements": {
     "paseo": ">=0.16.0-beta.1"
   }

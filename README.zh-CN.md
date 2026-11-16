@@ -1,57 +1,76 @@
 # Paseo OfficeCLI
 
-由官方 [OfficeCLI](https://github.com/iOfficeAI/OfficeCLI) 驱动，在 [Paseo](https://github.com/getpaseo/paseo) 内预览和处理 Word、Excel、PowerPoint 文件。
+在 [Paseo](https://github.com/getpaseo/paseo) 内直接查看和编辑 Office 文档，由官方 [OfficeCLI](https://github.com/iOfficeAI/OfficeCLI) 驱动。无需安装 Microsoft Office。
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
+[English](README.md) · [简体中文](README.zh-CN.md)
 
 [![Checks](https://github.com/plumegod/paseo-officecli/actions/workflows/check.yml/badge.svg)](https://github.com/plumegod/paseo-officecli/actions/workflows/check.yml)
 [![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [功能](#features) · [安装](#installation) · [使用](#usage) · [安全](#safety) · [开发](#development)
 
+![Paseo 文件面板中的 PowerPoint 实时预览与对象选区](assets/preview-powerpoint.png)
+
+> **主要解决的问题**：
+> AI 工具通常无法直接查看或精确修改 Office 二进制格式文件，经常需要转换格式或全量重写。
+> 结合 [Paseo](https://github.com/getpaseo/paseo) 与 [OfficeCLI](https://github.com/iOfficeAI/OfficeCLI)，可以在工作区内直接浏览文档、划选局部内容引用给 AI，或直接对表格进行交互编辑。
+
+---
+
 <a id="features"></a>
 ## 功能
 
-- **在文件面板预览。** 使用 OfficeCLI 的 HTML 渲染器打开 `.docx`、`.xlsx`、`.pptx`，支持切换工作表和浏览多页幻灯片；磁盘文件变化后自动刷新预览。
-- **交互编辑 Excel。** 通过官方 watch 页面编辑单元格文字、拖动图表，再使用 OfficeCLI 保存。
-- **引用 Word 和 PowerPoint 选区。** 把选中对象的快照附加到当前工作区的对话，不会自动发送消息。
-- **按需使用完整 CLI。** 高级命令接收 JSON 参数数组及标准输入，提供执行确认、stdout/stderr、实时状态和停止操作；不经过 shell，也不固定命令白名单。
-- **独立选择界面语言。** 跟随 Paseo，或为插件选择 English、简体中文、繁體中文、日本語。
+| 核心功能 | 说明 | 支持格式 |
+| :--- | :--- | :---: |
+| **快速预览** | 在文件面板直接打开，无需安装庞大的微软 Office，文件变动自动重载。 | `.docx` `.xlsx` `.pptx` |
+| **划区引用与局部修改** | 选中段落、表格或形状图元，将其路径与内容发给 AI 针对性修改，避免全量重写整篇文档。 | `.docx` `.pptx` |
+| **Excel 实时编辑** | 双击单元格直接修改文本与数值，可拖动图表，保存即刻写回原文件。 | `.xlsx` |
+| **CLI 控制台** | 传入 JSON 参数数组运行官方命令，直接查询或批量更新文档结构，提供实时输出与中止控制。 | `.docx` `.xlsx` `.pptx` |
 
-> Word 和 PowerPoint 的交互页面提供实时预览与对象选择，**不支持原位文本编辑**。其他编辑请使用高级命令、Paseo agent 或终端。
+| ![Word 预览与段落高亮选区](assets/preview-word.png) | ![Excel 交互式单元格编辑](assets/preview-excel.png) |
+| :---: | :---: |
+
+> Word 和 PowerPoint 页面提供预览与选区功能，**不支持原位文字排版输入**。文本修改可使用高级命令、AI agent 或外部编辑器。
+
+---
 
 <a id="requirements"></a>
 ## 环境要求
 
-| 组件 | 要求 |
-| --- | --- |
-| Paseo | **0.16.0-beta.1 或更新版本**，已启用 trusted plugins |
-| OfficeCLI | 官方稳定版 **1.0.160 或更新版本**，安装在 daemon 所在机器 |
-| Git | daemon 所在机器可执行 Git，用于下述 Git 源安装 |
-| 客户端 | Paseo 桌面端或现代浏览器；不支持原生手机客户端的 Office 预览 |
+| 组件 | 版本要求 | 说明 |
+| :--- | :--- | :--- |
+| **Paseo** | **0.16.0-beta.1 或更新版本** | 启用插件；daemon 所在机器须有 Node.js 和 npm，以获取插件包 |
+| **OfficeCLI** | **1.0.160 或更新版本** | 官方稳定版，安装在 daemon 所在机器 |
+| **客户端** | 桌面端或现代浏览器 | 不支持原生移动端预览 |
 
-OfficeCLI 独立安装、独立升级，本插件不捆绑、分叉或锁定其二进制。后续稳定版需要保持公开 CLI 与 watch 接口兼容；上游出现破坏性变更时，可能仍需更新插件。
+---
 
 <a id="installation"></a>
 ## 安装
 
-1. **在运行 Paseo daemon 的机器上**按 [OfficeCLI 官方安装说明](https://github.com/iOfficeAI/OfficeCLI#installation)安装，然后确认：
+1. 确认已在运行 Paseo daemon 的机器上安装官方 OfficeCLI（详见 [OfficeCLI 官方安装说明](https://github.com/iOfficeAI/OfficeCLI#installation)）：
 
    ```sh
    officecli --version
    ```
 
-2. 审阅本插件源码和主机权限。在目标 daemon 的 **Paseo 设置 → 插件**中打开**启用插件**，然后在该机器上运行：
+2. 在 **Paseo 设置 → 插件** 中开启插件。在**插件来源**中粘贴 `npm:paseo-officecli`，点击**安装插件**。也可在 daemon 所在机器上执行一条安装命令：
 
    ```sh
-   paseo plugin install https://github.com/plumegod/paseo-officecli.git
+   paseo plugin add npm:paseo-officecli
+   ```
+
+   这里使用 Paseo 官方的 [npm 插件来源](https://paseo.sh/docs/plugins/reference#npm-installation-and-publishing)。插件包的下载、编译与生命周期均由 Paseo 管理，无需拉取源码、手动安装项目依赖或单独构建。
+
+3. 确认插件状态为 `running`：
+
+   ```sh
    paseo plugin ls
    ```
 
-   插件必须显示为 `running`。未出现或失败时，先核对目标 daemon 和全局开关，再查看 `paseo plugin logs paseo-officecli`。此 Git 安装不需要 `npm install` 或单独构建，运行时模块和源码编译均由 Paseo 提供。
+   安装失败时，查看 `paseo plugin logs paseo-officecli`。
 
-3. 打开 **Paseo 设置 → 插件 → paseo-officecli → OfficeCLI**，确认检测到的程序路径和版本。只有自定义安装位置才需填写可执行文件绝对路径并保存。检测使用 daemon 账户的环境，可能与终端不同。插件不增加侧边栏工作台。
-4. 在工作区文件树打开 Office 文件，选择 **OfficeCLI**；如需记住选择，可勾选 **不再询问**。也可在 **设置 → 文件** 中指定默认打开方式，无需卸载其他 Office 插件。
+在文件树中点击任意 `.docx`、`.xlsx` 或 `.pptx` 文件，选择 **OfficeCLI** 即可打开。
 
 更新插件：
 
@@ -59,57 +78,58 @@ OfficeCLI 独立安装、独立升级，本插件不捆绑、分叉或锁定其�
 paseo plugin update paseo-officecli
 ```
 
-此命令只更新插件。OfficeCLI 请按官方说明独立升级，在插件设置中重新检测路径和版本，并重新打开交互页面。详见[程序查找与升级说明](docs/USAGE.md#officecli)（英文）。
+自定义路径说明见[程序查找与升级说明](docs/USAGE.md#officecli)（英文）。
+
+---
 
 <a id="usage"></a>
 ## 使用
 
-### 预览与交互页面
+### 模式说明与交互操作
 
-Word 和 PowerPoint 首次默认进入**选择模式**，可直接切换到只读的**阅读模式**。Excel 首次默认进入**阅读模式**，也可切换到**编辑模式**。当前客户端会按文件类型分别记住最后的选择，重新打开或重启后仍沿用；可在文件工具栏或插件设置的 **OfficeCLI → 文档模式**中调整。交互模式使用 OfficeCLI 自己的 watch 服务，允许对当前原文件执行受支持的修改。
-
-点击 **保存** 执行官方保存命令；离开页面不等于保存或撤销。Word 和 PowerPoint 可在选中对象后点击 **引用选中区域**，准备对话附件。快照包含文件路径和对象内容，向 AI 发送敏感信息前请先检查。
+| 格式 | 模式 | 操作方式 |
+| :--- | :---: | :--- |
+| **Word / PowerPoint** | **选择模式** | 划选文字或形状 → 点击**引用选中区域**为 AI 喂入上下文 |
+| **Excel** | **编辑模式** | 双击单元格直接修改 → 拖拽图表 → 点击**保存**写入磁盘 |
 
 ### 高级命令
-
-在已打开的文件内选择 **高级命令**，输入 JSON 字符串数组，**不包含** `officecli` 前缀，例如：
+在工具栏选择**高级命令**，可直接向 OfficeCLI 传入 JSON 参数数组：
 
 ```json
 ["set", "draft.docx", "/body/p[1]", "--prop", "text=Updated from Paseo"]
 ```
 
-每一项就是一个参数。相对路径以当前工作区为基准；Windows 路径中的反斜杠须转义为 `\\`。运行前请在确认弹窗中核对实际程序、工作目录、参数及权限。
-
-批处理或交互协议可展开标准输入区域。`|`、`&&`、`>` 等 shell 运算符不会被解释。请查阅当前官方帮助，不要猜测命令：
+查看命令帮助：
 
 ```json
 ["help"]
 ```
 
-[使用指南](docs/USAGE.md)（英文）包含批处理输入、输出上限、任务停止、选区快照及 watch 生命周期说明。[样例文件](examples/)同时用于集成测试。
+批处理与服务生命周期说明见[使用指南](docs/USAGE.md)（英文）。仓库内提供[样例文件](examples/)。
+
+---
 
 <a id="language"></a>
 ## 界面语言
 
-打开 **Paseo 设置 → 插件 → paseo-officecli → OfficeCLI → 语言**。默认**跟随 Paseo**，也可手动选择 English、简体中文、繁體中文或日本語。
+在 **Paseo 设置 → 插件 → paseo-officecli → OfficeCLI → 语言** 中设置。可选择**跟随 Paseo**，也可选择 English、简体中文、繁體中文或日本語。仅保存在当前客户端。
 
-语言偏好仅保存在当前桌面／浏览器客户端，不修改 Paseo 全局语言或 daemon 设置。切换语言不会丢失草稿、任务、输出、选区或交互会话。OfficeCLI 命令、原始输出、文档内容和官方页面不翻译；宿主渲染的入口标题仍跟随 Paseo 的语言。
+---
 
 <a id="safety"></a>
 ## 安全与限制
 
-- **可信主机执行，不是文件系统沙箱。** 高级命令以 daemon 账户运行，可访问工作区外文件、网络或全局配置。请备份重要文件；执行失败、停止或超限终止都**不会撤销**已生效的修改。
-- **预览与编辑权限不同。** 只读预览不修改原文件；交互模式会启动本机 watch 服务，并允许对原文件进行受支持的编辑。预览和交互路径均校验真实工作区边界。
-- **不可信文档仍然不可信。** 官方 HTML 在仅允许 `allow-scripts` 的隔离 iframe 中运行，外部资源被阻止。这不是完整的文档安全沙箱或网络防火墙，请勿点击不可信的文档链接。
-- **请明确保存。** 插件不改变 OfficeCLI resident 的自动保存策略，不在退出时自动保存，也不关闭用户自建的 resident/watch 服务。写入超时后可能已经生效，请先检查再决定是否重试。
-- **渲染不是 Microsoft Office。** 不支持旧格式 `.doc` / `.xls` / `.ppt`、加密文件或原生手机端预览。远程字体、公式库及 3D 资源被阻止，复杂排版可能存在差异。
+- **本地运算**：文档在本地渲染，不向第三方云服务上传私有文件。
+- **沙箱隔离**：HTML 预览在受限 iframe 中运行，拦截外部未经授权的网络请求。
+- **工作区边界**：文档操作均在当前工作区路径内进行校验。
+- 更多说明见[使用指南](docs/USAGE.md)（英文）。已知问题见 [GitHub Issues](https://github.com/plumegod/paseo-officecli/issues) 与[已知问题列表](https://github.com/plumegod/paseo-officecli/issues/1)。
 
-精确上限和远程访问行为见[使用指南](docs/USAGE.md)（英文）。请在 [Issues](https://github.com/plumegod/paseo-officecli/issues) 提交可复现问题，附上 Paseo/OfficeCLI 版本及脱敏日志。反馈预览布局问题前，请先查看[已知问题](https://github.com/plumegod/paseo-officecli/issues/1)。
+---
 
 <a id="development"></a>
 ## 开发
 
-使用 **Node.js 22.18 或更新版本**。Paseo 提供运行时 SDK 和客户端模块，插件没有额外运行时依赖。
+需要 **Node.js 22.18 或更新版本**：
 
 ```sh
 npm ci
@@ -119,20 +139,18 @@ npm run test:regression
 npm run test:integration
 ```
 
-最后两条命令需要已安装的官方 OfficeCLI，找不到时会直接失败。集成测试使用临时文档；watch 测试还覆盖 resident／保存行为，约需两分钟。GitHub Actions 在 Windows、macOS 和 Linux 执行类型检查及单元／规范／文档／打包测试，再使用固定校验和的 **1.0.160** 二进制运行 OfficeCLI 集成测试。它验证受支持的基线，不承诺任意未来版本。
-
-CI 还会把官方 `@getpaseo/cli@0.16.0-beta.1` 安装到临时前缀，将 `PASEO_CLI_ENTRYPOINT` 指向其 `dist/index.js`，运行 `npm run test:install`。该测试在单独、仅监听 loopback 的 daemon 中安装不含插件 `node_modules` 的打包源码，验证 `running`、重载、检查日志并移除插件，不会为已有 daemon 开启插件。`package.json` 仍为 private：当前支持通过 Git 发布，而不是使用未发布的 npm 包。分享某个修订前，须要求全部 CI 作业通过，并在测试 daemon 上安装该确切 Git 修订验证。
-
-本地安装前，先移除已有的同 ID 插件安装源，然后运行：
+本地安装测试：
 
 ```sh
 paseo plugin install .
 paseo plugin reload paseo-officecli
 ```
 
-贡献前请阅读 [AGENTS.md](AGENTS.md) 和[运行时国际化规范](docs/I18N.md)（英文）。修改任意一份 README 的请求，都意味着在**同一次变更中更新全部三种语言**。`npm test` 校验共用章节锚点、链接、版本号及命令示例；CI 会拒绝遗漏语言的 README 变更。译文含义仍需人工审阅。
+参与贡献请查阅 [AGENTS.md](AGENTS.md) 与[运行时国际化规范](docs/I18N.md)（英文）。
+
+---
 
 <a id="license"></a>
 ## 许可证
 
-[MIT](LICENSE)。本项目独立维护，并非 Paseo 或 iOfficeAI 官方产品。OfficeCLI 自身许可见其[上游仓库](https://github.com/iOfficeAI/OfficeCLI)，本仓库不分发其二进制。
+[MIT](LICENSE)。本项目为独立开源插件，非 Paseo 或 iOfficeAI 官方产品。OfficeCLI 许可详见[上游仓库](https://github.com/iOfficeAI/OfficeCLI)。

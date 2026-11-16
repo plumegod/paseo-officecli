@@ -12,6 +12,13 @@ const pkg = JSON.parse(readFileSync(new URL("package.json", root), "utf8"));
 const [packed] = JSON.parse(execFileSync(process.execPath, [process.env.npm_execpath, "pack", "--dry-run", "--ignore-scripts", "--json"], { cwd: fileURLToPath(root), encoding: "utf8" }));
 const files = new Set(packed.files.map(({ path }) => path));
 
+test("publication uses the public npm registry without acquisition scripts", () => {
+  assert.notEqual(pkg.private, true);
+  assert.deepEqual(pkg.publishConfig, { access: "public", registry: "https://registry.npmjs.org/" });
+  for (const script of ["preinstall", "install", "postinstall", "prepare"]) assert.equal(pkg.scripts?.[script], undefined, script);
+  assert.equal(pkg.scripts.prepublishOnly, "npm run typecheck && npm test");
+});
+
 test("release artifact includes every local import and only host-provided runtime libraries", () => {
   for (const file of ["paseo-plugin.json", "index.client.tsx", "index.server.ts", "LICENSE", "OVERVIEW.md", "OVERVIEW.zh-CN.md"]) assert.ok(files.has(file), file);
   assert.deepEqual(pkg.dependencies ?? {}, {}, "New runtime dependencies need a locked installation path");
