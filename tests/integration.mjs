@@ -7,6 +7,7 @@ import { after, test } from "node:test";
 import { renderDocument, resolveExecutable, runOfficeCli } from "../server/officecli.ts";
 import { InstallationInspector, requireInstallation } from "../server/installation.ts";
 
+process.env.OFFICECLI_SKIP_UPDATE = "1";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const executable = await resolveExecutable();
 console.log(`Official OfficeCLI: ${(await runOfficeCli(executable, ["--version"])).trim()}`);

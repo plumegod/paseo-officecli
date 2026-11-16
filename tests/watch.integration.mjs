@@ -7,6 +7,8 @@ import { test } from "node:test";
 import { WatchManager } from "../server/watch.ts";
 import { resolveExecutable, runOfficeCli } from "../server/officecli.ts";
 
+process.env.OFFICECLI_SKIP_UPDATE = "1";
+
 test("official watch: cell/chart edits, resident save, disk reopen and format limits", { timeout: 120_000 }, async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "paseo-watch-integration-")));
   const executable = await resolveExecutable();

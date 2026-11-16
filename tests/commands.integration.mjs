@@ -8,6 +8,7 @@ import { CommandRunner, resolveExecutable } from "../server/officecli.ts";
 
 // Test-owned documents only; do not start or close the user's document residents.
 process.env.OFFICECLI_NO_AUTO_RESIDENT = "1";
+process.env.OFFICECLI_SKIP_UPDATE = "1";
 const executable = await resolveExecutable();
 
 async function waitFor(runner, predicate = (job) => job.status !== "running", timeout = 30_000) {
