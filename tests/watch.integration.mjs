@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, copyFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, copyFile, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -8,7 +8,7 @@ import { WatchManager } from "../server/watch.ts";
 import { resolveExecutable, runOfficeCli } from "../server/officecli.ts";
 
 test("official watch: cell/chart edits, resident save, disk reopen and format limits", { timeout: 120_000 }, async () => {
-  const root = await mkdtemp(join(tmpdir(), "paseo-watch-integration-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "paseo-watch-integration-")));
   const executable = await resolveExecutable();
   const manager = new WatchManager();
   const file = join(root, "中文 editable.xlsx"), other = join(root, "other.xlsx");

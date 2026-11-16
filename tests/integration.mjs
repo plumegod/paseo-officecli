@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,7 +10,7 @@ import { InstallationInspector, requireInstallation } from "../server/installati
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const executable = await resolveExecutable();
 console.log(`Official OfficeCLI: ${(await runOfficeCli(executable, ["--version"])).trim()}`);
-const temp = await mkdtemp(join(tmpdir(), "paseo-officecli-live-"));
+const temp = await realpath(await mkdtemp(join(tmpdir(), "paseo-officecli-live-")));
 after(async () => {
   // Newer official renderers may open residents; close only this suite's temporary documents.
   for (const format of ["docx", "xlsx", "pptx"]) await runOfficeCli(executable, ["close", join(temp, `smoke.${format}`)]).catch(() => {});

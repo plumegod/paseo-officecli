@@ -67,7 +67,13 @@ jobs:
             chmod +x $binary
             if ($LASTEXITCODE -ne 0) { throw 'Could not make OfficeCLI executable.' }
           }
+          $tmp = Join-Path $env:RUNNER_TEMP 'officecli-tmp'
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
           "OFFICECLI_PATH=$binary" >> $env:GITHUB_ENV
+          "TMP=$tmp" >> $env:GITHUB_ENV
+          "TEMP=$tmp" >> $env:GITHUB_ENV
+          "TMPDIR=$tmp" >> $env:GITHUB_ENV
+          "DOTNET_BUNDLE_EXTRACT_BASE_DIR=$tmp" >> $env:GITHUB_ENV
       - name: Install official Paseo test host
         shell: pwsh
         run: |

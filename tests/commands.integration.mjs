@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -21,7 +21,7 @@ async function waitFor(runner, predicate = (job) => job.status !== "running", ti
 }
 
 async function setup(t) {
-  const cwd = await mkdtemp(join(tmpdir(), "paseo-officecli-commands-"));
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), "paseo-officecli-commands-")));
   const runner = new CommandRunner();
   t.after(async () => { runner.dispose(); await rm(cwd, { recursive: true, force: true }); });
   async function command(args, input = "", success = true) {
